@@ -1,39 +1,24 @@
-// registry.go
-
 package client
 
 import (
-    "sync"
+	"sync"
+	"github.com/jiajia556/chainkit/core/types"
 )
 
-// Adapter is the existing interface
+// Adapter interface defines the methods that must be implemented by any adapter.
 type Adapter interface {
-    // existing methods
+	Chain() types.Chain
 }
 
-// Registry struct definition with the internal adapters map and mutex
+// Registry holds a map of adapters and a mutex for concurrent access.
 type Registry struct {
-    mu       sync.Mutex
-    adapters map[string]Adapter
+	mu      sync.RWMutex
+	adapters map[chainKey]Adapter
 }
-
-// NewRegistry creates a new Registry instance
+// NewRegistry creates a new instance of Registry.
 func NewRegistry() *Registry {
-    return &Registry{
-        adapters: make(map[string]Adapter),
-    }
+	return &Registry{
+		adapters: make(map[chainKey]Adapter),
+	}
 }
 
-// Register adds a new adapter to the Registry
-func (r *Registry) Register(adapter Adapter) error {
-    r.mu.Lock()
-    defer r.mu.Unlock()
-    // registration logic
-}
-
-// Get retrieves an adapter by Chain type
-func (r *Registry) Get(chain types.Chain) (Adapter, bool) {
-    r.mu.Lock()
-    defer r.mu.Unlock()
-    // retrieval logic
-}
