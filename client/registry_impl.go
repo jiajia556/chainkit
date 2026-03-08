@@ -1,35 +1,17 @@
-package registry
+package client
 
-// Registry provides an interface for managing clients
-
-type Registry interface {
-    Register(client Client) error
-    Get(id string) (Client, error)
+// NewRegistry returns a new Registry instance.
+func NewRegistry() *Registry {
+	return &Registry{}
 }
 
-// NewRegistry creates a new client registry
-func NewRegistry() Registry {
-    return &registryImpl{clients: make(map[string]Client)}
+// Register adds an adapter to the Registry.
+func (r *Registry) Register(adapter Adapter) {
+	// Add logic to register adapter
 }
 
-type registryImpl struct {
-    clients map[string]Client
-}
-
-// Register adds a new client to the registry
-func (r *registryImpl) Register(client Client) error {
-    if _, exists := r.clients[client.ID]; exists {
-        return fmt.Errorf("client already registered: %s", client.ID)
-    }
-    r.clients[client.ID] = client
-    return nil
-}
-
-// Get retrieves a client by id
-func (r *registryImpl) Get(id string) (Client, error) {
-    client, exists := r.clients[id]
-    if !exists {
-        return Client{}, fmt.Errorf("client not found: %s", id)
-    }
-    return client, nil
+// Get retrieves an adapter for a given chain.
+func (r *Registry) Get(chain types.Chain) (Adapter, bool) {
+	// Add logic to get adapter for chain
+	return nil, false
 }
