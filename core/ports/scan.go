@@ -1,35 +1,10 @@
 package ports
 
-import (
-	"context"
-	"time"
+import "context"
 
-	"github.com/jiajia556/chainkit/core/types"
-	"github.com/jiajia556/chainkit/scan/cursor"
-)
-
-type ScanRequest struct {
-	Chain types.Chain
-	Asset types.Asset // native or token; if empty -> chain-defined default behavior
-
-	// Confirmation depth: scanner should not emit events newer than (latest - Confirmations)
-	Confirmations uint64
-
-	// Optional: time range scanning (TRON often easier by timestamp)
-	FromTime *time.Time
-	ToTime   *time.Time
-
-	// Cursor for incremental scanning
-	Cursor cursor.Cursor
-
-	Limit int
-}
-
-type ScanResponse struct {
-	Events     []types.Event
-	NextCursor cursor.Cursor
-}
-
-type ScanPort interface {
-	ScanEvents(ctx context.Context, req ScanRequest) (ScanResponse, error)
+// ScanPort is the generic interface for chain event scanners.
+// Req is the chain-specific scan request type.
+// Resp is the chain-specific scan response type.
+type ScanPort[Req any, Resp any] interface {
+	ScanEvents(ctx context.Context, req Req) (Resp, error)
 }

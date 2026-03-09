@@ -2,89 +2,34 @@ package memory
 
 import (
 	"context"
-	"fmt"
-	"strconv"
-	"strings"
 	"sync"
-
-	"github.com/jiajia556/chainkit/core/types"
-	"github.com/jiajia556/chainkit/scan/cursor"
 )
 
-type Store struct {
-	mu sync.RWMutex
-	m  map[string]cursor.Cursor
+// Store is a generic, thread-safe in-memory cursor store.
+// Each Store instance is scoped to a single scanner.
+type Store[Cur any] struct {
+	mu  sync.RWMutex
+	cur Cur
+	ok  bool
 }
 
-func NewStore() *Store {
-	return &Store{
-		m: make(map[string]cursor.Cursor),
-	}
+// NewStore returns a new in-memory cursor store.
+func NewStore[Cur any]() *Store[Cur] {
+	return &Store[Cur]{}
 }
 
-func (s *Store) Get(ctx context.Context, chain types.Chain, scannerName string) (cursor.Cursor, bool, error) {
-	_ = ctx
-	if s == nil {
-		return nil, false, fmt.Errorf("store is nil")
-	}
-	if scannerName == "" {
-		return nil, false, fmt.Errorf("scannerName is empty")
-	}
-
-	key := storeKey(chain, scannerName)
-
+// Get returns the stored cursor and whether it has been set.
+func (s *Store[Cur]) Get(_ context.Context) (Cur, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	cur, ok := s.m[key]
-	if !ok {
-		return nil, false, nil
-	}
-
-	out := make(cursor.Cursor, len(cur))
-	for k, v := range cur {
-		out[k] = v
-	}
-	return out, true, nil
+	return s.cur, s.ok, nil
 }
 
-func (s *Store) Set(ctx context.Context, chain types.Chain, scannerName string, cur cursor.Cursor) error {
-	_ = ctx
-	if s == nil {
-		return fmt.Errorf("store is nil")
-	}
-	if scannerName == "" {
-		return fmt.Errorf("scannerName is empty")
-	}
-
-	key := storeKey(chain, scannerName)
-
+// Set stores the cursor.
+func (s *Store[Cur]) Set(_ context.Context, cur Cur) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if s.m == nil {
-		s.m = make(map[string]cursor.Cursor)
-	}
-
-	cp := make(cursor.Cursor, len(cur))
-	for k, v := range cur {
-		cp[k] = v
-	}
-	s.m[key] = cp
+	s.cur = cur
+	s.ok = true
 	return nil
-}
-
-func storeKey(c types.Chain, scannerName string) string {
-	// type:network:chainID:name|scannerName
-	var b strings.Builder
-	b.WriteString(string(c.Type))
-	b.WriteByte(':')
-	b.WriteString(string(c.Network))
-	b.WriteByte(':')
-	b.WriteString(strconv.FormatUint(c.ChainID, 10))
-	b.WriteByte(':')
-	b.WriteString(c.Name)
-	b.WriteByte('|')
-	b.WriteString(scannerName)
-	return b.String()
 }
