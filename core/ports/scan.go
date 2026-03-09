@@ -31,5 +31,5 @@ type ScanResponse struct {
 }
 
 type ScanPort interface {
-	ScanDeposits(ctx context.Context, req ScanRequest) (ScanResponse, error)
+	ScanEvents(ctx context.Context, req ScanRequest) (ScanResponse, error)
 }

@@ -43,13 +43,13 @@ func (r *Runner) RunOnce(ctx context.Context, chain types.Chain, asset types.Ass
 
 	req := ports.ScanRequest{
 		Chain:         chain,
-		Asset:         asset, // allowed to be empty (2A)
+		Asset:         asset, // allowed to be empty
 		Confirmations: r.Confirmations,
 		Cursor:        cur,
 		Limit:         limit,
 	}
 
-	resp, err := r.Scanner.ScanDeposits(ctx, req)
+	resp, err := r.Scanner.ScanEvents(ctx, req)
 	if err != nil {
 		return fmt.Errorf("scan deposits: %w", err)
 	}
