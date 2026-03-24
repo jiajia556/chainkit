@@ -5,6 +5,7 @@ import (
 
 	"github.com/jiajia556/chainkit/models"
 	"github.com/jiajia556/chainkit/pkg/mnemonic"
+	"github.com/jiajia556/tool-box/cryptox"
 	"github.com/jiajia556/tool-box/mysqlx"
 )
 
@@ -35,6 +36,18 @@ func NewRecord(ctx ...mysqlx.Session) *Record {
 	return r
 }
 
+func (r *Record) Create(password ...string) (err error) {
+	pwd := r.password
+	if len(password) > 0 {
+		pwd = password[0]
+	}
+	r.Model.Words, err = cryptox.EncryptWithPassword(1, pwd, r.Model.Words)
+	if err != nil {
+		return err
+	}
+	return r.DB().Create(r.Model).Error
+}
+
 func (r *Record) SetPassword(password string) {
 	r.password = password
 }
@@ -43,6 +56,11 @@ func (r *Record) GetAddressAndPriKeyStringByIndex(index uint32, password ...stri
 	pwd := r.password
 	if len(password) > 0 {
 		pwd = password[0]
+	}
+
+	r.Model.Words, err = cryptox.DecryptWithPassword(pwd, r.Model.Words)
+	if err != nil {
+		return "", "", err
 	}
 
 	wallet, err := mnemonic.NewWallet(string(r.Model.Words), pwd)
@@ -57,6 +75,13 @@ func (r *Record) GetPrivateKey(index uint32, password ...string) (*ecdsa.Private
 	pwd := r.password
 	if len(password) > 0 {
 		pwd = password[0]
+	}
+
+	var err error
+
+	r.Model.Words, err = cryptox.DecryptWithPassword(pwd, r.Model.Words)
+	if err != nil {
+		return nil, err
 	}
 
 	wallet, err := mnemonic.NewWallet(string(r.Model.Words), pwd)

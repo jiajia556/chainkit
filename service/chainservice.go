@@ -72,24 +72,11 @@ func CheckBalance(checkBalance bool) Option {
 	}
 }
 
-func NewTransferService(chainDbId, fromAddrId uint64, password string) (*ChainService, error) {
+func NewTransferService(chainDbId uint64) (*ChainService, error) {
 	chain := chainkitchains.NewRecord()
 	err := chain.Read(chainDbId)
 	if err != nil {
 		return nil, err
-	}
-
-	address := chainkitmnemonicaddresses.NewRecord()
-	var priKey *ecdsa.PrivateKey
-	if fromAddrId > 0 {
-		err = address.Read(fromAddrId)
-		if err != nil {
-			return nil, err
-		}
-		priKey, err = address.GetPriKey(password)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	client, err := ethclient.Dial(chain.Model.Rpc)
@@ -98,11 +85,26 @@ func NewTransferService(chainDbId, fromAddrId uint64, password string) (*ChainSe
 	}
 
 	return &ChainService{
-		client:        client,
-		priKey:        priKey,
-		chainId:       big.NewInt(chain.Model.ChainId),
-		chainDbId:     chain.Model.Id,
-		fromAddressId: address.Model.Id,
-		fromAddress:   address.Model.Address,
+		client:    client,
+		chainId:   big.NewInt(chain.Model.ChainId),
+		chainDbId: chain.Model.Id,
 	}, nil
+}
+
+func (s *ChainService) SetFrom(fromAddrId uint64, password string) error {
+	address := chainkitmnemonicaddresses.NewRecord()
+	err := address.Read(fromAddrId)
+	if err != nil {
+		return err
+	}
+	priKey, err := address.GetPriKey(password)
+	if err != nil {
+		return err
+	}
+
+	s.priKey = priKey
+	s.fromAddressId = address.Model.Id
+	s.fromAddress = address.Model.Address
+
+	return nil
 }
