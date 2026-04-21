@@ -75,3 +75,17 @@ func (s *ChainService) BalanceOf(tokenAddress string, address string) (decimal.D
 	}
 	return decimal.NewFromBigInt(balance, 0), nil
 }
+
+func (s *ChainService) IsContract(address string) (bool, error) {
+	if s == nil || s.client == nil {
+		return false, errors.New("chain service not initialized")
+	}
+	if !common.IsHexAddress(address) {
+		return false, errors.New("invalid address")
+	}
+	code, err := s.client.CodeAt(context.Background(), common.HexToAddress(address), nil)
+	if err != nil {
+		return false, err
+	}
+	return len(code) > 0, nil
+}

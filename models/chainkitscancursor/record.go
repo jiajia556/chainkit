@@ -30,3 +30,11 @@ func NewRecord(ctx ...mysqlx.Session) *Record {
 	}
 	return r
 }
+
+func (r *Record) ReadByContractAndChain(contractAddress string, chainDbId uint64) error {
+	return r.DB().Where("contract_address = ? AND chain_db_id = ?", contractAddress, chainDbId).Take(&r.Model).Error
+}
+
+func (r *Record) UpdateLastestBlock(lastestBlock uint64) error {
+	return r.DB().Model(r.Model).Update("lastest_block", lastestBlock).Error
+}

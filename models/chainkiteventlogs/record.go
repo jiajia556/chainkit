@@ -1,6 +1,8 @@
 package chainkiteventlogs
 
 import (
+	"strings"
+
 	"github.com/jiajia556/chainkit/models"
 	"github.com/jiajia556/tool-box/mysqlx"
 )
@@ -29,4 +31,8 @@ func NewRecord(ctx ...mysqlx.Session) *Record {
 		},
 	}
 	return r
+}
+
+func (r *Record) ReadLastByContractAndChain(contractAddress string, chainDbId uint64) error {
+	return r.DB().Where("contract_address = ? AND chain_db_id = ?", strings.ToLower(contractAddress), chainDbId).Order("id desc").Take(&r.Model).Error
 }

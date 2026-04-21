@@ -1,9 +1,11 @@
 package service
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/jiajia556/chainkit/models/chainkitchains"
 	"github.com/jiajia556/chainkit/models/chainkitmnemonicaddresses"
@@ -107,4 +109,61 @@ func (s *ChainService) SetFrom(fromAddrId uint64, password string) error {
 	s.fromAddress = address.Model.Address
 
 	return nil
+}
+
+func (s *ChainService) GetClient() *ethclient.Client {
+	return s.client
+}
+
+func (s *ChainService) GetTransactOpts(opts ...Option) (*bind.TransactOpts, error) {
+	transactOpts, err := bind.NewKeyedTransactorWithChainID(s.priKey, s.chainId)
+	if err != nil {
+		return nil, err
+	}
+
+	opt := &transactionOptions{}
+	for _, apply := range opts {
+		if apply != nil {
+			apply(opt)
+		}
+	}
+
+	if opt.nonce != nil {
+		transactOpts.Nonce = opt.nonce
+	} else {
+		nonce, err := s.client.PendingNonceAt(context.Background(), transactOpts.From)
+		if err != nil {
+			return nil, err
+		}
+		transactOpts.Nonce = big.NewInt(int64(nonce))
+	}
+	if opt.value != nil {
+		transactOpts.Value = opt.value
+	} else {
+		transactOpts.Value = big.NewInt(0)
+	}
+	if opt.gasPrice != nil {
+		transactOpts.GasPrice = opt.gasPrice
+	} else {
+		transactOpts.GasPrice, err = s.client.SuggestGasPrice(context.Background())
+		if err != nil {
+			return nil, err
+		}
+	}
+	if transactOpts.GasPrice.Cmp(big.NewInt(100000000)) < 0 {
+		transactOpts.GasPrice = big.NewInt(100000000)
+	}
+
+	if opt.gasLimit != 0 {
+		transactOpts.GasLimit = opt.gasLimit
+	}
+
+	if opt.gasTipCap != nil {
+		transactOpts.GasTipCap = opt.gasTipCap
+	}
+	if opt.gasFeeCap != nil {
+		transactOpts.GasFeeCap = opt.gasFeeCap
+	}
+
+	return transactOpts, nil
 }

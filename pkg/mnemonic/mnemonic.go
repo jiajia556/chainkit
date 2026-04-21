@@ -23,33 +23,37 @@ var defaultPath = []uint32{
 }
 
 type Wallet struct {
-	masterKey  *bip32.Key
 	accountKey *bip32.Key
-	mu         sync.Mutex
+
+	// child key cache（只缓存 bip32.Key，不缓存私钥）
+	cache map[uint32]*bip32.Key
+	mu    sync.RWMutex
 }
 
-// NewWords generates a new BIP-39 mnemonic (12 words by default).
+// ================== 创建 ==================
+
+// NewWords 生成助记词
 func NewWords() (string, error) {
 	entropy, err := bip39.NewEntropy(128)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate entropy: %w", err)
 	}
 
-	words, err := bip39.NewMnemonic(entropy)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate mnemonic: %w", err)
-	}
-
-	return words, nil
+	return bip39.NewMnemonic(entropy)
 }
 
+// 从 mnemonic 创建
 func NewWallet(mnemonic string, passphrase string) (*Wallet, error) {
-
 	if !bip39.IsMnemonicValid(mnemonic) {
 		return nil, fmt.Errorf("invalid mnemonic")
 	}
 
 	seed := bip39.NewSeed(mnemonic, passphrase)
+	return NewWalletFromSeed(seed)
+}
+
+// 推荐：直接用 seed（避免重复 PBKDF2）
+func NewWalletFromSeed(seed []byte) (*Wallet, error) {
 
 	masterKey, err := bip32.NewMasterKey(seed)
 	if err != nil {
@@ -66,18 +70,49 @@ func NewWallet(mnemonic string, passphrase string) (*Wallet, error) {
 	}
 
 	return &Wallet{
-		masterKey:  masterKey,
 		accountKey: key,
+		cache:      make(map[uint32]*bip32.Key),
 	}, nil
 }
 
+func NewSeedFromMnemonic(words string, passphrase string) ([]byte, error) {
+	if !bip39.IsMnemonicValid(words) {
+		return nil, fmt.Errorf("invalid mnemonic")
+	}
+	return bip39.NewSeed(words, passphrase), nil
+}
+
+// ================== 核心派生 ==================
+
 func (w *Wallet) deriveKey(index uint32) (*bip32.Key, error) {
 
+	// 先读缓存
+	w.mu.RLock()
+	if k, ok := w.cache[index]; ok {
+		w.mu.RUnlock()
+		return k, nil
+	}
+	w.mu.RUnlock()
+
+	// 写缓存
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	return w.accountKey.NewChildKey(index)
+	// double check
+	if k, ok := w.cache[index]; ok {
+		return k, nil
+	}
+
+	child, err := w.accountKey.NewChildKey(index)
+	if err != nil {
+		return nil, err
+	}
+
+	w.cache[index] = child
+	return child, nil
 }
+
+// ================== 对外接口 ==================
 
 func (w *Wallet) PrivateKey(index uint32) (*ecdsa.PrivateKey, error) {
 
@@ -91,7 +126,12 @@ func (w *Wallet) PrivateKey(index uint32) (*ecdsa.PrivateKey, error) {
 
 func (w *Wallet) Address(index uint32) (common.Address, error) {
 
-	priv, err := w.PrivateKey(index)
+	child, err := w.deriveKey(index)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	priv, err := crypto.ToECDSA(child.Key)
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -121,7 +161,12 @@ func (w *Wallet) PrivateKeyHex(index uint32) (string, error) {
 
 func (w *Wallet) AddressAndPrivateKey(index uint32) (string, string, error) {
 
-	priv, err := w.PrivateKey(index)
+	child, err := w.deriveKey(index)
+	if err != nil {
+		return "", "", err
+	}
+
+	priv, err := crypto.ToECDSA(child.Key)
 	if err != nil {
 		return "", "", err
 	}
@@ -131,18 +176,27 @@ func (w *Wallet) AddressAndPrivateKey(index uint32) (string, string, error) {
 	return addr.Hex(), hexutil.Encode(crypto.FromECDSA(priv)), nil
 }
 
+// ================== 批量接口（重点优化） ==================
+
 func (w *Wallet) BatchAddresses(start uint32, count uint32) ([]string, error) {
 
 	addrs := make([]string, 0, count)
 
 	for i := uint32(0); i < count; i++ {
 
-		addr, err := w.AddressHex(start + i)
+		child, err := w.deriveKey(start + i)
 		if err != nil {
 			return nil, err
 		}
 
-		addrs = append(addrs, addr)
+		priv, err := crypto.ToECDSA(child.Key)
+		if err != nil {
+			return nil, err
+		}
+
+		addr := crypto.PubkeyToAddress(priv.PublicKey)
+
+		addrs = append(addrs, addr.Hex())
 	}
 
 	return addrs, nil

@@ -22,5 +22,5 @@ func (data *ChainScanCursor) TableName() string {
 }
 
 func (data *ChainScanCursor) GetCreateDDL() string {
-	return "CREATE TABLE `chain_scan_cursor` (   `id` bigint unsigned NOT NULL AUTO_INCREMENT,   `chain_db_id` bigint unsigned NOT NULL,   `contract_address` char(42) COLLATE utf8mb4_general_ci NOT NULL,   `lastest_block` bigint unsigned NOT NULL,   `created_at` datetime NOT NULL,   `updated_at` datetime NOT NULL,   PRIMARY KEY (`id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;"
+	return "CREATE TABLE `chain_scan_cursor` (  `id` bigint unsigned NOT NULL AUTO_INCREMENT,  `chain_db_id` bigint unsigned NOT NULL,  `contract_address` char(42) COLLATE utf8mb4_general_ci NOT NULL,  `lastest_block` bigint unsigned NOT NULL,  `created_at` datetime NOT NULL,  `updated_at` datetime NOT NULL,  PRIMARY KEY (`id`),  UNIQUE KEY `idx_uniq_contract_chain` (`contract_address`,`chain_db_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
 }

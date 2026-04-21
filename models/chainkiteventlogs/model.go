@@ -1,7 +1,10 @@
 package chainkiteventlogs
 
 import (
+	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type ChainEventLogs struct {
@@ -27,4 +30,9 @@ func (data *ChainEventLogs) TableName() string {
 
 func (data *ChainEventLogs) GetCreateDDL() string {
 	return "CREATE TABLE `chain_event_logs` (   `id` bigint unsigned NOT NULL AUTO_INCREMENT,   `chain_db_id` bigint unsigned NOT NULL,   `contract_address` char(42) COLLATE utf8mb4_general_ci NOT NULL,   `tx_hash` char(66) COLLATE utf8mb4_general_ci NOT NULL,   `log_index` int unsigned NOT NULL,   `block_number` bigint unsigned NOT NULL,   `block_hash` char(66) COLLATE utf8mb4_general_ci NOT NULL,   `event_sig` binary(32) NOT NULL,   `created_at` datetime NOT NULL,   `raw_data` blob,   PRIMARY KEY (`id`),   UNIQUE KEY `idx_uniq_chi` (`chain_db_id`,`tx_hash`,`log_index`),   KEY `idx_contract_address` (`contract_address`),   KEY `idx_tx_hash` (`tx_hash`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;"
+}
+
+func (data *ChainEventLogs) BeforeCreate(tx *gorm.DB) (err error) {
+	data.ContractAddress = strings.ToLower(data.ContractAddress)
+	return nil
 }

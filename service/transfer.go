@@ -20,8 +20,11 @@ import (
 )
 
 func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Option) (string, error) {
-	if s == nil || s.client == nil || s.priKey == nil {
+	if s == nil || s.client == nil {
 		return "", errors.New("transfer service not initialized")
+	}
+	if s.priKey == nil {
+		return "", errors.New("from address not set")
 	}
 
 	if !common.IsHexAddress(to) {
@@ -136,8 +139,11 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 }
 
 func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, opts ...Option) (string, error) {
-	if s == nil || s.client == nil || s.priKey == nil {
+	if s == nil || s.client == nil {
 		return "", errors.New("transfer service not initialized")
+	}
+	if s.priKey == nil {
+		return "", errors.New("from address not set")
 	}
 
 	if !common.IsHexAddress(token) {
@@ -201,6 +207,13 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 		auth.GasLimit = opt.gasLimit
 	}
 
+	if opt.gasTipCap != nil {
+		auth.GasTipCap = opt.gasTipCap
+	}
+	if opt.gasFeeCap != nil {
+		auth.GasFeeCap = opt.gasFeeCap
+	}
+
 	instance, err := erc20.NewErc20(tokenAddr, s.client)
 	if err != nil {
 		return "", err
@@ -215,6 +228,12 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 }
 
 func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []decimal.Decimal, opts ...Option) (string, *big.Int, error) {
+	if s == nil || s.client == nil {
+		return "", nil, errors.New("transfer service not initialized")
+	}
+	if s.priKey == nil {
+		return "", nil, errors.New("from address not set")
+	}
 	tokens := make([]common.Address, len(tokensStr))
 	tos := make([]common.Address, len(tosStr))
 	values := make([]*big.Int, len(valuesDec))
@@ -363,7 +382,7 @@ func (s *ChainService) DBTransfer(count int, opts ...Option) error {
 		return false
 	})
 
-	txHash, nonce, err := s.MultiTransfer(tokensStr, tosStr, valuesDec, CheckBalance(true))
+	txHash, nonce, err := s.MultiTransfer(tokensStr, tosStr, valuesDec, opts...)
 	if err != nil {
 		return err
 	}
