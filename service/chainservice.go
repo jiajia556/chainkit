@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -21,13 +22,14 @@ type ChainService struct {
 }
 
 type transactionOptions struct {
-	nonce        *big.Int
-	value        *big.Int
-	gasPrice     *big.Int
-	gasLimit     uint64
-	gasTipCap    *big.Int
-	gasFeeCap    *big.Int
-	checkBalance bool
+	nonce          *big.Int
+	value          *big.Int
+	gasPrice       *big.Int
+	gasLimit       uint64
+	gasTipCap      *big.Int
+	gasFeeCap      *big.Int
+	checkBalance   bool
+	useMinGasPrice bool
 }
 
 type Option func(*transactionOptions)
@@ -47,6 +49,12 @@ func Value(value *big.Int) Option {
 func GasPrice(gasPrice *big.Int) Option {
 	return func(o *transactionOptions) {
 		o.gasPrice = gasPrice
+	}
+}
+
+func UserMinGasPrice() Option {
+	return func(o *transactionOptions) {
+		o.useMinGasPrice = true
 	}
 }
 
@@ -115,7 +123,10 @@ func (s *ChainService) GetClient() *ethclient.Client {
 	return s.client
 }
 
-func (s *ChainService) GetTransactOpts(opts ...Option) (*bind.TransactOpts, error) {
+func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, error) {
+	if s.priKey == nil {
+		return nil, errors.New("no private key")
+	}
 	transactOpts, err := bind.NewKeyedTransactorWithChainID(s.priKey, s.chainId)
 	if err != nil {
 		return nil, err
@@ -150,8 +161,10 @@ func (s *ChainService) GetTransactOpts(opts ...Option) (*bind.TransactOpts, erro
 			return nil, err
 		}
 	}
-	if transactOpts.GasPrice.Cmp(big.NewInt(100000000)) < 0 {
-		transactOpts.GasPrice = big.NewInt(100000000)
+	if opt.useMinGasPrice {
+		if transactOpts.GasPrice.Cmp(big.NewInt(100000000)) < 0 {
+			transactOpts.GasPrice = big.NewInt(100000000)
+		}
 	}
 
 	if opt.gasLimit != 0 {

@@ -20,6 +20,30 @@ type scanOptions struct {
 	Topics            [][]common.Hash
 }
 
+// Clone returns a deep-copied value of scanOptions.
+// Note: Topics is a 2D slice and must be deep-copied to avoid sharing backing arrays
+// between callers (e.g., when cloning from defaultScanOptions).
+func (o *scanOptions) Clone() scanOptions {
+	if o == nil {
+		return scanOptions{}
+	}
+
+	out := *o // copy primitive fields + slice headers
+	if o.Topics != nil {
+		out.Topics = make([][]common.Hash, len(o.Topics))
+		for i := range o.Topics {
+			if o.Topics[i] == nil {
+				continue
+			}
+			inner := make([]common.Hash, len(o.Topics[i]))
+			copy(inner, o.Topics[i])
+			out.Topics[i] = inner
+		}
+	}
+
+	return out
+}
+
 var defaultScanOptions = &scanOptions{
 	safeConfirmations: 20,
 	step:              1000,
@@ -53,7 +77,7 @@ func StartBlock(startBlock uint64) ScanOption {
 }
 
 func (s *ChainService) ScanBlock(contractAddress string, handler LogHandler, option ...ScanOption) error {
-	opts := *defaultScanOptions
+	opts := defaultScanOptions.Clone()
 	for _, apply := range option {
 		apply(&opts)
 	}
@@ -98,6 +122,10 @@ func (s *ChainService) ScanBlock(contractAddress string, handler LogHandler, opt
 		return err
 	}
 
+	if header.Number.Uint64() <= opts.safeConfirmations {
+		session.Rollback()
+		return errors.New("latest block number is less than or equal to safe confirmations")
+	}
 	netSafeLastestBlock := header.Number.Uint64() - opts.safeConfirmations
 	toBlock := cursor.Model.LastestBlock + opts.step
 	if toBlock > netSafeLastestBlock {
@@ -122,6 +150,9 @@ func (s *ChainService) ScanBlock(contractAddress string, handler LogHandler, opt
 
 	lastLogBlockNumber := uint64(0)
 	for _, log := range logs {
+		if len(log.Topics) == 0 {
+			continue
+		}
 		logRecord := chainkiteventlogs.NewRecord(session)
 		logRecord.Model.ChainDbId = s.chainDbId
 		logRecord.Model.ContractAddress = contractAddress
@@ -139,8 +170,8 @@ func (s *ChainService) ScanBlock(contractAddress string, handler LogHandler, opt
 		}
 
 		lastLogBlockNumber = log.BlockNumber
-		cursor.UpdateLastestBlock(lastLogBlockNumber)
 	}
+	cursor.UpdateLastestBlock(lastLogBlockNumber)
 	if toBlock > lastLogBlockNumber || len(logs) == 0 {
 		logRecord := chainkiteventlogs.NewRecord(session)
 		logRecord.Model.ChainDbId = s.chainDbId

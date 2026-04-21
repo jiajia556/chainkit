@@ -80,8 +80,10 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 			return "", err
 		}
 	}
-	if gasPrice.Cmp(big.NewInt(100000000)) < 0 {
-		gasPrice = big.NewInt(100000000)
+	if opt.useMinGasPrice {
+		if gasPrice.Cmp(big.NewInt(100000000)) < 0 {
+			gasPrice = big.NewInt(100000000)
+		}
 	}
 
 	// gas limit
@@ -105,6 +107,7 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 	if gasTipCap != nil && gasFeeCap != nil {
 		// EIP-1559 transaction
 		tx = types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
 			Nonce:     nonce,
 			To:        &toAddr,
 			Value:     weiValue,
@@ -125,7 +128,9 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 		})
 	}
 
-	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), s.priKey)
+	// Use go-ethereum's recommended signer selection to safely support both legacy and EIP-1559 tx types.
+	signer := types.LatestSignerForChainID(chainID)
+	signedTx, err := types.SignTx(tx, signer, s.priKey)
 	if err != nil {
 		return "", err
 	}
@@ -199,8 +204,10 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 			return "", err
 		}
 	}
-	if auth.GasPrice.Cmp(big.NewInt(100000000)) < 0 {
-		auth.GasPrice = big.NewInt(100000000)
+	if opt.useMinGasPrice {
+		if auth.GasPrice.Cmp(big.NewInt(100000000)) < 0 {
+			auth.GasPrice = big.NewInt(100000000)
+		}
 	}
 
 	if opt.gasLimit != 0 {
@@ -309,8 +316,10 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 			return "", big.NewInt(0), err
 		}
 	}
-	if auth.GasPrice.Cmp(big.NewInt(100000000)) < 0 {
-		auth.GasPrice = big.NewInt(100000000)
+	if opt.useMinGasPrice {
+		if auth.GasPrice.Cmp(big.NewInt(100000000)) < 0 {
+			auth.GasPrice = big.NewInt(100000000)
+		}
 	}
 
 	if opt.gasLimit != 0 {
