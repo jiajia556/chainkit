@@ -1,6 +1,8 @@
 package chainkitscancursor
 
 import (
+	"strings"
+
 	"github.com/jiajia556/chainkit/models"
 	"github.com/jiajia556/tool-box/mysqlx"
 )
@@ -31,8 +33,8 @@ func NewRecord(ctx ...mysqlx.Session) *Record {
 	return r
 }
 
-func (r *Record) ReadByContractAndChain(contractAddress string, chainDbId uint64) error {
-	return r.DB().Where("contract_address = ? AND chain_db_id = ?", contractAddress, chainDbId).Take(&r.Model).Error
+func (r *Record) ReadByContractAndChain(contractAddress, module string, chainDbId uint64) error {
+	return r.DB().Where("contract_address = ? AND module = ? AND chain_db_id = ?", strings.ToLower(contractAddress), module, chainDbId).Take(&r.Model).Error
 }
 
 func (r *Record) UpdateLastestBlock(lastestBlock uint64) error {

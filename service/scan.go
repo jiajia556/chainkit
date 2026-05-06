@@ -50,7 +50,7 @@ var defaultScanOptions = &scanOptions{
 }
 
 type ScanOption func(*scanOptions)
-type LogHandler func(mysqlSession *mysqlx.TxSession, log types.Log, eventLogId uint64) error
+type LogHandler func(mysqlSession *mysqlx.TxSession, log types.Log, eventLogId uint64, chainDbId uint64) error
 
 func SafeConfirmations(confirmations uint64) ScanOption {
 	return func(o *scanOptions) {
@@ -76,7 +76,7 @@ func StartBlock(startBlock uint64) ScanOption {
 	}
 }
 
-func (s *ChainService) ScanBlock(contractAddress string, handler LogHandler, option ...ScanOption) error {
+func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHandler, option ...ScanOption) error {
 	opts := defaultScanOptions.Clone()
 	for _, apply := range option {
 		apply(&opts)
@@ -93,22 +93,21 @@ func (s *ChainService) ScanBlock(contractAddress string, handler LogHandler, opt
 	}()
 
 	cursor := chainkitscancursor.NewRecord(session)
-	cursor.ReadByContractAndChain(contractAddress, s.chainDbId)
+	cursor.ReadByContractAndChain(contractAddress, module, s.chainDbId)
 	if !cursor.Exists() {
 		cursor.Model.ChainDbId = s.chainDbId
 		cursor.Model.ContractAddress = contractAddress
+		cursor.Model.Module = module
 		cursor.Model.LastestBlock = opts.startBlock
 		cursor.Create()
 	} else {
 		lastLogRecord := chainkiteventlogs.NewRecord(session)
-		lastLogRecord.ReadLastByContractAndChain(contractAddress, s.chainDbId)
-		if !lastLogRecord.Exists() {
-			session.Rollback()
-			return errors.New("last log record not found")
-		}
-		if lastLogRecord.Model.BlockNumber != cursor.Model.LastestBlock {
-			session.Rollback()
-			return errors.New("last log block number is not equal to cursor block number")
+		lastLogRecord.ReadLastByContractAndChain(contractAddress, module, s.chainDbId)
+		if lastLogRecord.Exists() {
+			if lastLogRecord.Model.BlockNumber != cursor.Model.LastestBlock {
+				session.Rollback()
+				return errors.New("last log block number is not equal to cursor block number")
+			}
 		}
 	}
 	if cursor.Model.LastestBlock == 0 {
@@ -156,6 +155,7 @@ func (s *ChainService) ScanBlock(contractAddress string, handler LogHandler, opt
 		logRecord := chainkiteventlogs.NewRecord(session)
 		logRecord.Model.ChainDbId = s.chainDbId
 		logRecord.Model.ContractAddress = contractAddress
+		logRecord.Model.Module = module
 		logRecord.Model.TxHash = log.TxHash.String()
 		logRecord.Model.LogIndex = uint32(log.Index)
 		logRecord.Model.BlockNumber = log.BlockNumber
@@ -164,18 +164,21 @@ func (s *ChainService) ScanBlock(contractAddress string, handler LogHandler, opt
 		logRecord.Model.RawData = log.Data
 		logRecord.Create()
 
-		if err := handler(session, log, logRecord.Model.Id); err != nil {
+		if err := handler(session, log, logRecord.Model.Id, s.chainDbId); err != nil {
 			session.Rollback()
 			return err
 		}
 
 		lastLogBlockNumber = log.BlockNumber
 	}
-	cursor.UpdateLastestBlock(lastLogBlockNumber)
+	if lastLogBlockNumber > cursor.Model.LastestBlock {
+		cursor.UpdateLastestBlock(lastLogBlockNumber)
+	}
 	if toBlock > lastLogBlockNumber || len(logs) == 0 {
 		logRecord := chainkiteventlogs.NewRecord(session)
 		logRecord.Model.ChainDbId = s.chainDbId
 		logRecord.Model.ContractAddress = contractAddress
+		logRecord.Model.Module = module
 		logRecord.Model.TxHash = ""
 		logRecord.Model.LogIndex = 0
 		logRecord.Model.BlockNumber = toBlock

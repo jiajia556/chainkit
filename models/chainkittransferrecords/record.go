@@ -2,6 +2,7 @@ package chainkittransferrecords
 
 import (
 	"github.com/jiajia556/chainkit/models"
+	"github.com/jiajia556/chainkit/pkg/types"
 	"github.com/jiajia556/tool-box/mysqlx"
 )
 
@@ -37,8 +38,9 @@ func NewRecord(ctx ...mysqlx.Session) *Record {
 	return r
 }
 
-func (r *Record) ReadPending(chainDbId, addressId uint64) error {
-	return r.DB().Where("address_id = ? AND status = ? AND chain_db_id = ?", addressId, StatusPending, chainDbId).Take(r.Model).Error
+func (r *Record) ReadPending(chainDbId uint64, addressType types.ServiceAddressType, addressId uint64) error {
+	return r.DB().Where("address_id = ? AND from_address_type = ? AND status = ? AND chain_db_id = ?",
+		addressId, addressType, StatusPending, chainDbId).Take(r.Model).Error
 }
 
 func (r *Record) SetSuccess() error {

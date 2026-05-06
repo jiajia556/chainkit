@@ -1,6 +1,8 @@
 package chainkittokens
 
 import (
+	"strings"
+
 	"github.com/jiajia556/chainkit/models"
 	"github.com/jiajia556/tool-box/mysqlx"
 )
@@ -32,11 +34,11 @@ func NewRecord(ctx ...mysqlx.Session) *Record {
 }
 
 func (r *Record) ReadByChainAndContractAddress(chainDbId uint64, contractAddress string) *Record {
-	r.DB().Where("chain_db_id = ? AND contract_address = ?", chainDbId, contractAddress).Take(r.Model)
+	r.DB().Where("contract_address = ? AND chain_db_id = ?", strings.ToLower(contractAddress), chainDbId).Take(r.Model)
 	return r
 }
 
 func (r *Record) ReadByChainAndSymbol(chainDbId uint64, symbol string) *Record {
-	r.DB().Where("chain_db_id = ? AND symbol = ?", chainDbId, symbol).Take(r.Model)
+	r.DB().Where("symbol = ? AND chain_db_id = ?", symbol, chainDbId).Take(r.Model)
 	return r
 }

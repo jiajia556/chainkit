@@ -351,7 +351,7 @@ func (s *ChainService) DBTransfer(count int, opts ...Option) error {
 	}
 
 	pending := chainkittransferrecords.NewRecord()
-	err := pending.ReadPending(s.chainDbId, s.fromAddressId)
+	err := pending.ReadPending(s.chainDbId, s.fromAddressType, s.fromAddressId)
 	if err == nil && pending.Exists() {
 		status, err := s.GetTxStatus(pending.Model.Hash)
 		if err != nil {
@@ -374,7 +374,7 @@ func (s *ChainService) DBTransfer(count int, opts ...Option) error {
 	ids := make([]uint64, 0)
 
 	list := chainkittransferdetails.NewList()
-	err = list.FindByFromAddressIdAndStatus(s.fromAddressId, chainkittransferdetails.StatusWaiting, count)
+	err = list.FindByFromAddressIdAndStatus(s.fromAddressId, s.fromAddressType, chainkittransferdetails.StatusWaiting, count)
 	if err != nil {
 		return err
 	}
@@ -383,12 +383,12 @@ func (s *ChainService) DBTransfer(count int, opts ...Option) error {
 		return nil
 	}
 
-	list.Foreach(func(key int, detail chainkittransferdetails.Record) (isBreak bool) {
+	list.Foreach(func(key int, detail *chainkittransferdetails.Record) bool {
 		tokensStr = append(tokensStr, detail.Model.TokenAddress)
 		tosStr = append(tosStr, detail.Model.To)
 		valuesDec = append(valuesDec, detail.Model.Amount)
 		ids = append(ids, detail.Model.Id)
-		return false
+		return true
 	})
 
 	txHash, nonce, err := s.MultiTransfer(tokensStr, tosStr, valuesDec, opts...)
@@ -398,7 +398,8 @@ func (s *ChainService) DBTransfer(count int, opts ...Option) error {
 
 	record := chainkittransferrecords.NewRecord()
 	record.Model.ChainDbId = s.chainDbId
-	record.Model.AddressId = s.fromAddressId
+	record.Model.FromAddressType = string(s.fromAddressType)
+	record.Model.FromAddressId = s.fromAddressId
 	record.Model.Hash = txHash
 	record.Model.Nonce = nonce.Uint64()
 	record.Model.Status = chainkittransferrecords.StatusPending

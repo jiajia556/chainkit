@@ -10,15 +10,23 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/jiajia556/chainkit/models/chainkitchains"
 	"github.com/jiajia556/chainkit/models/chainkitmnemonicaddresses"
+	"github.com/jiajia556/chainkit/models/chainkituserdepositaddress"
+	"github.com/jiajia556/chainkit/pkg/types"
+)
+
+const (
+	Mnemonic    types.ServiceAddressType = "mnemonic"
+	UserDeposit types.ServiceAddressType = "user_deposit"
 )
 
 type ChainService struct {
-	client        *ethclient.Client
-	chainDbId     uint64
-	chainId       *big.Int
-	fromAddressId uint64
-	fromAddress   string
-	priKey        *ecdsa.PrivateKey
+	client          *ethclient.Client
+	chainDbId       uint64
+	chainId         *big.Int
+	fromAddressType types.ServiceAddressType
+	fromAddressId   uint64
+	fromAddress     string
+	priKey          *ecdsa.PrivateKey
 }
 
 type transactionOptions struct {
@@ -82,7 +90,7 @@ func CheckBalance(checkBalance bool) Option {
 	}
 }
 
-func NewTransferService(chainDbId uint64) (*ChainService, error) {
+func NewChainService(chainDbId uint64) (*ChainService, error) {
 	chain := chainkitchains.NewRecord()
 	err := chain.Read(chainDbId)
 	if err != nil {
@@ -101,7 +109,7 @@ func NewTransferService(chainDbId uint64) (*ChainService, error) {
 	}, nil
 }
 
-func (s *ChainService) SetFrom(fromAddrId uint64, password string) error {
+func (s *ChainService) SetFromByMnemonicAddress(fromAddrId uint64, password string) error {
 	address := chainkitmnemonicaddresses.NewRecord()
 	err := address.Read(fromAddrId)
 	if err != nil {
@@ -113,6 +121,26 @@ func (s *ChainService) SetFrom(fromAddrId uint64, password string) error {
 	}
 
 	s.priKey = priKey
+	s.fromAddressType = Mnemonic
+	s.fromAddressId = address.Model.Id
+	s.fromAddress = address.Model.Address
+
+	return nil
+}
+
+func (s *ChainService) SetFromByDepositAddress(fromAddrId uint64, password string) error {
+	address := chainkituserdepositaddress.NewRecord()
+	err := address.Read(fromAddrId)
+	if err != nil {
+		return err
+	}
+	priKey, err := address.GetPriKey(password)
+	if err != nil {
+		return err
+	}
+
+	s.priKey = priKey
+	s.fromAddressType = UserDeposit
 	s.fromAddressId = address.Model.Id
 	s.fromAddress = address.Model.Address
 
