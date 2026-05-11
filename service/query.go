@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/jiajia556/chainkit/pkg/contracts/erc20"
 	"github.com/shopspring/decimal"
 )
@@ -12,7 +14,9 @@ import (
 type TxStatus string
 
 const (
+	TxStatusNotFound  TxStatus = "not_found"
 	TxStatusPending   TxStatus = "pending"
+	TxStatusMined     TxStatus = "mined"
 	TxStatusConfirmed TxStatus = "confirmed"
 	TxStatusFailed    TxStatus = "failed"
 )
@@ -21,24 +25,70 @@ func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
 	if s == nil || s.client == nil {
 		return "", errors.New("chain service not initialized")
 	}
+
 	if !common.IsHexHash(txHash) {
 		return "", errors.New("invalid transaction hash")
 	}
-	_, isPending, err := s.client.TransactionByHash(context.Background(), common.HexToHash(txHash))
+
+	hash := common.HexToHash(txHash)
+
+	tx, isPending, err := s.client.TransactionByHash(context.Background(), hash)
 	if err != nil {
+		if errors.Is(err, ethereum.NotFound) {
+			return TxStatusNotFound, nil
+		}
 		return "", err
 	}
+
+	if tx == nil {
+		return TxStatusNotFound, nil
+	}
+
 	if isPending {
 		return TxStatusPending, nil
 	}
-	receipt, err := s.client.TransactionReceipt(context.Background(), common.HexToHash(txHash))
+
+	receipt, err := s.client.TransactionReceipt(context.Background(), hash)
+	if err != nil {
+		if errors.Is(err, ethereum.NotFound) {
+			return TxStatusPending, nil
+		}
+		return "", err
+	}
+
+	if receipt == nil {
+		return TxStatusPending, nil
+	}
+
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return TxStatusFailed, nil
+	}
+
+	if s.safeConfirmations == 0 {
+		return TxStatusConfirmed, nil
+	}
+
+	latest, err := s.client.BlockNumber(context.Background())
 	if err != nil {
 		return "", err
 	}
-	if receipt.Status == 1 {
+
+	if receipt.BlockNumber == nil {
+		return TxStatusPending, nil
+	}
+
+	minedBlock := receipt.BlockNumber.Uint64()
+
+	if latest < minedBlock {
+		return TxStatusPending, nil
+	}
+
+	confirmations := latest - minedBlock + 1
+	if confirmations >= s.safeConfirmations {
 		return TxStatusConfirmed, nil
 	}
-	return TxStatusFailed, nil
+
+	return TxStatusMined, nil
 }
 
 func (s *ChainService) BalanceAt(address string) (decimal.Decimal, error) {
@@ -88,4 +138,33 @@ func (s *ChainService) IsContract(address string) (bool, error) {
 		return false, err
 	}
 	return len(code) > 0, nil
+}
+
+func (s *ChainService) SuggestGasPrice() (decimal.Decimal, error) {
+	if s == nil || s.client == nil {
+		return decimal.Zero, errors.New("chain service not initialized")
+	}
+	price, err := s.client.SuggestGasPrice(context.Background())
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return decimal.NewFromBigInt(price, 0), nil
+}
+
+func (s *ChainService) IsNonceOccupied(address string, nonce uint64) (bool, error) {
+	if s == nil || s.client == nil {
+		return false, errors.New("chain service not initialized")
+	}
+	if !common.IsHexAddress(address) {
+		return false, errors.New("invalid address")
+	}
+
+	// pending nonce = 当前地址“下一个可用 nonce”
+	// 若传入 nonce 小于 pending nonce，说明该 nonce 已经被使用（已上链或在 pending 池中）
+	pendingNonce, err := s.client.PendingNonceAt(context.Background(), common.HexToAddress(address))
+	if err != nil {
+		return false, err
+	}
+
+	return nonce < pendingNonce, nil
 }

@@ -37,13 +37,13 @@ func NewRecord(session ...mysqlx.Session) *Record {
 }
 
 func (r *Record) ReadByUserAndToken(userId, tokenId uint64) *Record {
-	r.DB().Where("user_id = ? AND token_id = ?", userId, tokenId).Take(&r.Model)
+	r.DB().Where("user_id = ? AND token_id = ?", userId, tokenId).Take(r.Model)
 	if !r.Exists() {
 		r.Model.UserId = userId
 		r.Model.TokenId = tokenId
 		err := r.Create()
 		if err != nil {
-			r.DB().Where("user_id = ? AND token_id = ?", userId, tokenId).Take(&r.Model)
+			r.DB().Where("user_id = ? AND token_id = ?", userId, tokenId).Take(r.Model)
 		}
 	}
 	return r

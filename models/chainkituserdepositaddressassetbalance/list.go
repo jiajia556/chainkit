@@ -1,8 +1,11 @@
 package chainkituserdepositaddressassetbalance
 
 import (
+	"fmt"
+
 	"github.com/jiajia556/chainkit/models"
 	"github.com/jiajia556/tool-box/mysqlx"
+	"github.com/shopspring/decimal"
 )
 
 type List struct {
@@ -29,5 +32,11 @@ func NewList(session ...mysqlx.Session) *List {
 		},
 	}
 
+	return l
+}
+
+func (l *List) GetCanTaskByTokenBalance(tokenId uint64, minCollectAmount decimal.Decimal) *List {
+	where := fmt.Sprintf("token_id = %d AND balance_amount >= %s", tokenId, minCollectAmount.String())
+	l.DB().Where(where).Find(&l.Records)
 	return l
 }

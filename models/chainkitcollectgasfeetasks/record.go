@@ -1,4 +1,4 @@
-package chainkitcollectconfig
+package chainkitcollectgasfeetasks
 
 import (
 	"github.com/jiajia556/chainkit/models"
@@ -6,8 +6,18 @@ import (
 )
 
 type Record struct {
-	*models.BaseRecord[*ChainCollectConfig]
+	*models.BaseRecord[*ChainCollectGasFeeTasks]
 }
+
+const (
+	StatusWaiting = iota
+	StatusSending
+	StatusSent
+	StatusConfirmed
+	StatusFailed
+	StatusCancel
+	StatusSkip
+)
 
 func NewRecord(session ...mysqlx.Session) *Record {
 	var dbSession mysqlx.Session
@@ -17,21 +27,16 @@ func NewRecord(session ...mysqlx.Session) *Record {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainCollectConfig))
+		err := dbSession.CreateTableIfNotExists(new(ChainCollectGasFeeTasks))
 		if err != nil {
 			panic(err)
 		}
 	}
 	r := &Record{
-		BaseRecord: &models.BaseRecord[*ChainCollectConfig]{
+		BaseRecord: &models.BaseRecord[*ChainCollectGasFeeTasks]{
 			Session: dbSession,
-			Model:   new(ChainCollectConfig),
+			Model:   new(ChainCollectGasFeeTasks),
 		},
 	}
-	return r
-}
-
-func (r *Record) GetByChain(chainDbId uint64) *Record {
-	r.DB().Where("chain_db_id = ?", chainDbId).Take(r.Model)
 	return r
 }

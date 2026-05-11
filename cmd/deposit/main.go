@@ -30,7 +30,7 @@ func main() {
 	logConfig := log.DefaultConfig()
 	logConfig.Output = "file"
 	logConfig.File.Path = "deposit.log"
-	err = log.Init("std", logConfig)
+	err = log.Init(logConfig)
 	if err != nil {
 		panic(err)
 	}

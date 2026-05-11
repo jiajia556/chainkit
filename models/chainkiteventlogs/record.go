@@ -34,5 +34,5 @@ func NewRecord(ctx ...mysqlx.Session) *Record {
 }
 
 func (r *Record) ReadLastByContractAndChain(contractAddress, module string, chainDbId uint64) error {
-	return r.DB().Where("contract_address = ? AND module = ? AND chain_db_id = ?", strings.ToLower(contractAddress), module, chainDbId).Order("id desc").Take(&r.Model).Error
+	return r.DB().Where("contract_address = ? AND module = ? AND chain_db_id = ?", strings.ToLower(contractAddress), module, chainDbId).Order("id desc").Take(r.Model).Error
 }

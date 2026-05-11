@@ -38,7 +38,7 @@ func NewRecord(session ...mysqlx.Session) *Record {
 }
 
 func (r *Record) ReadByChainAndAddressAndToken(chainDbId, userDepAddrId, tokenId uint64) *Record {
-	r.DB().Where("chain_db_id = ? AND user_deposit_address_id = ? AND token_id = ?", chainDbId, userDepAddrId, tokenId).Take(&r.Model)
+	r.DB().Where("chain_db_id = ? AND user_deposit_address_id = ? AND token_id = ?", chainDbId, userDepAddrId, tokenId).Take(r.Model)
 	return r
 }
 

@@ -14,6 +14,7 @@ const (
 	StatusPending int8 = 1
 	StatusSuccess int8 = 2
 	StatusFailed  int8 = -1
+	StatusUnknown int8 = -2
 )
 
 func NewRecord(ctx ...mysqlx.Session) *Record {
@@ -48,6 +49,18 @@ func (r *Record) SetFailedByTransferRecordId(transferRecordId uint64) error {
 	return r.DB().Table(r.Model.TableName()).
 		Where("transfer_record_id = ?", transferRecordId).
 		Update("status", StatusFailed).Error
+}
+
+func (r *Record) SetWaitingByTransferRecordId(transferRecordId uint64) error {
+	return r.DB().Table(r.Model.TableName()).
+		Where("transfer_record_id = ?", transferRecordId).
+		Update("status", StatusWaiting).Error
+}
+
+func (r *Record) SetUnknownByTransferRecordId(transferRecordId uint64) error {
+	return r.DB().Table(r.Model.TableName()).
+		Where("transfer_record_id = ?", transferRecordId).
+		Update("status", StatusUnknown).Error
 }
 
 func (r *Record) SetPending(ids []uint64, transferRecordId uint64) error {

@@ -37,7 +37,7 @@ func NewRecord(session ...mysqlx.Session) *Record {
 }
 
 func (r *Record) ReadByAddress(address string) *Record {
-	r.DB().Where("address = ?", strings.ToLower(address)).Take(&r.Model)
+	r.DB().Where("address = ?", strings.ToLower(address)).Take(r.Model)
 	return r
 }
 

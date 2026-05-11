@@ -77,52 +77,56 @@ func StartBlock(startBlock uint64) ScanOption {
 }
 
 func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHandler, option ...ScanOption) error {
+	if s == nil || s.client == nil {
+		return errors.New("chain service not initialized")
+	}
+	if handler == nil {
+		return errors.New("log handler is nil")
+	}
+	if !common.IsHexAddress(contractAddress) {
+		return errors.New("invalid contract address")
+	}
+
 	opts := defaultScanOptions.Clone()
 	for _, apply := range option {
 		apply(&opts)
 	}
 
-	session := mysqlx.NewTxSession()
-	session.Begin()
-	defer func() {
-		e := recover()
-		if e != nil {
-			session.Rollback()
-			panic(e)
-		}
-	}()
-
-	cursor := chainkitscancursor.NewRecord(session)
-	cursor.ReadByContractAndChain(contractAddress, module, s.chainDbId)
+	// Read cursor outside of the transaction to avoid holding locks during RPC calls.
+	cursor := chainkitscancursor.NewRecord()
+	if err := cursor.ReadByContractAndChain(contractAddress, module, s.chainDbId); err != nil && !cursor.Exists() {
+		return err
+	}
 	if !cursor.Exists() {
 		cursor.Model.ChainDbId = s.chainDbId
 		cursor.Model.ContractAddress = contractAddress
 		cursor.Model.Module = module
 		cursor.Model.LastestBlock = opts.startBlock
-		cursor.Create()
+		if err := cursor.Create(); err != nil {
+			return err
+		}
 	} else {
-		lastLogRecord := chainkiteventlogs.NewRecord(session)
-		lastLogRecord.ReadLastByContractAndChain(contractAddress, module, s.chainDbId)
+		lastLogRecord := chainkiteventlogs.NewRecord()
+		if err := lastLogRecord.ReadLastByContractAndChain(contractAddress, module, s.chainDbId); err != nil && !lastLogRecord.Exists() {
+			return err
+		}
 		if lastLogRecord.Exists() {
 			if lastLogRecord.Model.BlockNumber != cursor.Model.LastestBlock {
-				session.Rollback()
 				return errors.New("last log block number is not equal to cursor block number")
 			}
 		}
 	}
 	if cursor.Model.LastestBlock == 0 {
-		session.Rollback()
 		return errors.New("start block is not set")
 	}
 
+	expectedCursorBlock := cursor.Model.LastestBlock
+
 	header, err := s.client.HeaderByNumber(context.Background(), nil)
 	if err != nil {
-		session.Rollback()
 		return err
 	}
-
 	if header.Number.Uint64() <= opts.safeConfirmations {
-		session.Rollback()
 		return errors.New("latest block number is less than or equal to safe confirmations")
 	}
 	netSafeLastestBlock := header.Number.Uint64() - opts.safeConfirmations
@@ -136,15 +140,42 @@ func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHand
 		FromBlock: big.NewInt(int64(cursor.Model.LastestBlock + 1)),
 		ToBlock:   big.NewInt(int64(toBlock)),
 		Topics:    opts.Topics,
-		Addresses: []common.Address{
-			contract,
-		},
+		Addresses: []common.Address{contract},
 	}
 
 	logs, err := s.client.FilterLogs(context.Background(), query)
 	if err != nil {
-		session.Rollback()
 		return err
+	}
+
+	session := mysqlx.NewTxSession()
+	if err := session.Begin(); err != nil {
+		return err
+	}
+	defer func() {
+		e := recover()
+		if e != nil {
+			_ = session.Rollback()
+			panic(e)
+		}
+	}()
+
+	rollbackWithErr := func(err error) error {
+		if rbErr := session.Rollback(); rbErr != nil {
+			return errors.New(err.Error() + "; rollback failed: " + rbErr.Error())
+		}
+		return err
+	}
+
+	cursorTx := chainkitscancursor.NewRecord(session)
+	if err := cursorTx.ReadByContractAndChain(contractAddress, module, s.chainDbId); err != nil {
+		return rollbackWithErr(err)
+	}
+	if !cursorTx.Exists() {
+		return rollbackWithErr(errors.New("scan cursor not found"))
+	}
+	if cursorTx.Model.LastestBlock != expectedCursorBlock {
+		return rollbackWithErr(errors.New("scan cursor moved; retry scan"))
 	}
 
 	lastLogBlockNumber := uint64(0)
@@ -162,19 +193,19 @@ func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHand
 		logRecord.Model.BlockHash = log.BlockHash.String()
 		logRecord.Model.EventSig = log.Topics[0].Bytes()
 		logRecord.Model.RawData = log.Data
-		logRecord.Create()
+		if err := logRecord.Create(); err != nil {
+			return rollbackWithErr(err)
+		}
 
 		if err := handler(session, log, logRecord.Model.Id, s.chainDbId); err != nil {
-			session.Rollback()
-			return err
+			return rollbackWithErr(err)
 		}
 
 		lastLogBlockNumber = log.BlockNumber
 	}
-	if lastLogBlockNumber > cursor.Model.LastestBlock {
-		cursor.UpdateLastestBlock(lastLogBlockNumber)
-	}
-	if toBlock > lastLogBlockNumber || len(logs) == 0 {
+
+	finalCursorBlock := toBlock
+	if toBlock > lastLogBlockNumber {
 		logRecord := chainkiteventlogs.NewRecord(session)
 		logRecord.Model.ChainDbId = s.chainDbId
 		logRecord.Model.ContractAddress = contractAddress
@@ -185,10 +216,19 @@ func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHand
 		logRecord.Model.BlockHash = ""
 		logRecord.Model.EventSig = nil
 		logRecord.Model.RawData = nil
-		logRecord.Create()
-		cursor.UpdateLastestBlock(toBlock)
+		if err := logRecord.Create(); err != nil {
+			return rollbackWithErr(err)
+		}
 	}
 
-	session.Commit()
+	if finalCursorBlock > cursorTx.Model.LastestBlock {
+		if err := cursorTx.UpdateLastestBlock(finalCursorBlock); err != nil {
+			return rollbackWithErr(err)
+		}
+	}
+
+	if err := session.Commit(); err != nil {
+		return err
+	}
 	return nil
 }

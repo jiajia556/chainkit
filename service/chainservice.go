@@ -7,6 +7,8 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/jiajia556/chainkit/models/chainkitchains"
 	"github.com/jiajia556/chainkit/models/chainkitmnemonicaddresses"
@@ -20,13 +22,14 @@ const (
 )
 
 type ChainService struct {
-	client          *ethclient.Client
-	chainDbId       uint64
-	chainId         *big.Int
-	fromAddressType types.ServiceAddressType
-	fromAddressId   uint64
-	fromAddress     string
-	priKey          *ecdsa.PrivateKey
+	client            *ethclient.Client
+	chainDbId         uint64
+	chainId           *big.Int
+	fromAddressType   types.ServiceAddressType
+	fromAddressId     uint64
+	fromAddress       string
+	priKey            *ecdsa.PrivateKey
+	safeConfirmations uint64
 }
 
 type transactionOptions struct {
@@ -42,9 +45,9 @@ type transactionOptions struct {
 
 type Option func(*transactionOptions)
 
-func Nonce(nonce *big.Int) Option {
+func Nonce(nonce uint64) Option {
 	return func(o *transactionOptions) {
-		o.nonce = nonce
+		o.nonce = big.NewInt(int64(nonce))
 	}
 }
 
@@ -103,10 +106,34 @@ func NewChainService(chainDbId uint64) (*ChainService, error) {
 	}
 
 	return &ChainService{
-		client:    client,
-		chainId:   big.NewInt(chain.Model.ChainId),
-		chainDbId: chain.Model.Id,
+		client:            client,
+		chainId:           big.NewInt(int64(chain.Model.ChainId)),
+		chainDbId:         chain.Model.Id,
+		safeConfirmations: chain.Model.SafeConfirmations,
 	}, nil
+}
+
+func (s *ChainService) CloseClient() {
+	if s == nil || s.client == nil {
+		return
+	}
+	s.client.Close()
+	s.client = nil
+}
+
+func (s *ChainService) DialClient() error {
+	chain := chainkitchains.NewRecord()
+	err := chain.Read(s.chainDbId)
+	if err != nil {
+		return err
+	}
+
+	client, err := ethclient.Dial(chain.Model.Rpc)
+	if err != nil {
+		return err
+	}
+	s.client = client
+	return nil
 }
 
 func (s *ChainService) SetFromByMnemonicAddress(fromAddrId uint64, password string) error {
@@ -118,6 +145,14 @@ func (s *ChainService) SetFromByMnemonicAddress(fromAddrId uint64, password stri
 	priKey, err := address.GetPriKey(password)
 	if err != nil {
 		return err
+	}
+	if !common.IsHexAddress(address.Model.Address) {
+		return errors.New("invalid stored from address")
+	}
+	derivedAddr := crypto.PubkeyToAddress(priKey.PublicKey)
+	storedAddr := common.HexToAddress(address.Model.Address)
+	if derivedAddr != storedAddr {
+		return errors.New("private key does not match stored address")
 	}
 
 	s.priKey = priKey
@@ -137,6 +172,14 @@ func (s *ChainService) SetFromByDepositAddress(fromAddrId uint64, password strin
 	priKey, err := address.GetPriKey(password)
 	if err != nil {
 		return err
+	}
+	if !common.IsHexAddress(address.Model.Address) {
+		return errors.New("invalid stored from address")
+	}
+	derivedAddr := crypto.PubkeyToAddress(priKey.PublicKey)
+	storedAddr := common.HexToAddress(address.Model.Address)
+	if derivedAddr != storedAddr {
+		return errors.New("private key does not match stored address")
 	}
 
 	s.priKey = priKey
@@ -183,7 +226,7 @@ func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, 
 	}
 	if opt.gasPrice != nil {
 		transactOpts.GasPrice = opt.gasPrice
-	} else {
+	} else if opt.gasTipCap == nil {
 		transactOpts.GasPrice, err = s.client.SuggestGasPrice(context.Background())
 		if err != nil {
 			return nil, err

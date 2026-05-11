@@ -8,8 +8,11 @@ require (
 	github.com/shopspring/decimal v1.4.0
 	github.com/tyler-smith/go-bip32 v1.0.0
 	github.com/tyler-smith/go-bip39 v1.1.0
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.1
 )
+
+replace github.com/jiajia556/tool-box => E:\work\gowork\tool-box
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect

@@ -81,7 +81,7 @@ func (r *Record) ReadLastByMnemonicId(mnemonicId uint64) (*Record, error) {
 	err := r.DB().
 		Where("mnemonic_id = ?", mnemonicId).
 		Order("`index` desc").
-		Take(&r.Model).Error
+		Take(r.Model).Error
 	if err != nil {
 		return nil, err
 	}
