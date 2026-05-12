@@ -36,3 +36,8 @@ func (l *List) GetWaitingList(chainDbId uint64) *List {
 	l.DB().Where("chain_db_id = ? AND status = 0", chainDbId).Find(&l.Records)
 	return l
 }
+
+func (l *List) GetSentList(chainDbId uint64) *List {
+	l.DB().Where("chain_db_id = ? AND status = 2", chainDbId).Find(&l.Records)
+	return l
+}

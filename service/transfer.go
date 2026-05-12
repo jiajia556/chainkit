@@ -19,16 +19,16 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Option) (hash string, fakeErr, err error) {
+func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
 	if s == nil || s.client == nil {
-		return "", nil, errors.New("transfer service not initialized")
+		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
-		return "", nil, errors.New("from address not set")
+		return "", 0, nil, errors.New("from address not set")
 	}
 
 	if !common.IsHexAddress(to) {
-		return "", nil, errors.New("invalid to address")
+		return "", 0, nil, errors.New("invalid to address")
 	}
 	toAddr := common.HexToAddress(to)
 
@@ -42,22 +42,22 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 	if opt.checkBalance {
 		balance, err := s.BalanceAt(s.fromAddress)
 		if err != nil {
-			return "", nil, err
+			return "", 0, nil, err
 		}
 		if balance.LessThan(value) {
-			return "", nil, errors.New("insufficient balance")
+			return "", 0, nil, errors.New("insufficient balance")
 		}
 	}
 
 	ctx := context.Background()
 	chainID := s.chainId
 	if chainID == nil {
-		return "", nil, errors.New("chain id not initialized")
+		return "", 0, nil, errors.New("chain id not initialized")
 	}
 
 	txOpts, err := s.GetBindTransactOpts(opts...)
 	if err != nil {
-		return "", nil, err
+		return "", 0, nil, err
 	}
 
 	weiValue := value.BigInt()
@@ -74,7 +74,7 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 		}
 	}
 
-	nonce := uint64(0)
+	nonce = 0
 	if txOpts.Nonce != nil {
 		nonce = txOpts.Nonce.Uint64()
 	}
@@ -93,7 +93,7 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 		})
 	} else {
 		if txOpts.GasPrice == nil {
-			return "", nil, errors.New("gas price not set")
+			return "", 0, nil, errors.New("gas price not set")
 		}
 		tx = types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,
@@ -108,33 +108,33 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 	signer := types.LatestSignerForChainID(chainID)
 	signedTx, err := types.SignTx(tx, signer, s.priKey)
 	if err != nil {
-		return "", nil, err
+		return "", 0, nil, err
 	}
 
 	if err := s.client.SendTransaction(ctx, signedTx); err != nil {
 		hash = signedTx.Hash().Hex()
 		fakeErr = err
-		return hash, fakeErr, nil
+		return hash, nonce, fakeErr, nil
 	}
 
-	return signedTx.Hash().Hex(), nil, nil
+	return signedTx.Hash().Hex(), nonce, nil, nil
 }
 
-func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, opts ...Option) (hash string, fakeErr, err error) {
+func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
 	if s == nil || s.client == nil {
-		return "", nil, errors.New("transfer service not initialized")
+		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
-		return "", nil, errors.New("from address not set")
+		return "", 0, nil, errors.New("from address not set")
 	}
 
 	if !common.IsHexAddress(token) {
-		return "", nil, errors.New("invalid token address")
+		return "", 0, nil, errors.New("invalid token address")
 	}
 	tokenAddr := common.HexToAddress(token)
 
 	if !common.IsHexAddress(to) {
-		return "", nil, errors.New("invalid to address")
+		return "", 0, nil, errors.New("invalid to address")
 	}
 	toAddr := common.HexToAddress(to)
 
@@ -148,16 +148,21 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 	if opt.checkBalance {
 		balance, err := s.BalanceOf(token, s.fromAddress)
 		if err != nil {
-			return "", nil, err
+			return "", 0, nil, err
 		}
 		if balance.LessThan(amount) {
-			return "", nil, errors.New("insufficient balance")
+			return "", 0, nil, errors.New("insufficient balance")
 		}
 	}
 
 	txOpts, err := s.GetBindTransactOpts(opts...)
 	if err != nil {
-		return "", nil, err
+		return "", 0, nil, err
+	}
+
+	nonce = 0
+	if txOpts.Nonce != nil {
+		nonce = txOpts.Nonce.Uint64()
 	}
 
 	var lastSignedTx *types.Transaction
@@ -173,34 +178,34 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 
 	instance, err := erc20.NewErc20(tokenAddr, s.client)
 	if err != nil {
-		return "", nil, err
+		return "", 0, nil, err
 	}
 
 	tx, err := instance.Transfer(txOpts, toAddr, amount.BigInt())
 	if err != nil {
 		if lastSignedTx == nil {
-			return "", nil, err
+			return "", 0, nil, err
 		}
 		hash = lastSignedTx.Hash().Hex()
 		fakeErr = err
-		return hash, fakeErr, nil
+		return hash, nonce, fakeErr, nil
 	}
 
-	return tx.Hash().Hex(), nil, nil
+	return tx.Hash().Hex(), nonce, nil, nil
 }
 
-func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []decimal.Decimal, opts ...Option) (hash string, nonce *big.Int, fakeErr, err error) {
+func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
 	if s == nil || s.client == nil {
-		return "", nil, nil, errors.New("transfer service not initialized")
+		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
-		return "", nil, nil, errors.New("from address not set")
+		return "", 0, nil, errors.New("from address not set")
 	}
 	if len(tokensStr) == 0 || len(tosStr) == 0 || len(valuesDec) == 0 {
-		return "", nil, nil, errors.New("transfer lists are empty")
+		return "", 0, nil, errors.New("transfer lists are empty")
 	}
 	if len(tokensStr) != len(tosStr) || len(tokensStr) != len(valuesDec) {
-		return "", nil, nil, errors.New("transfer lists length mismatch")
+		return "", 0, nil, errors.New("transfer lists length mismatch")
 	}
 
 	tokens := make([]common.Address, len(tokensStr))
@@ -211,12 +216,12 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	for i := range tokensStr {
 		tokensStr[i] = strings.ToLower(tokensStr[i])
 		if !common.IsHexAddress(tokensStr[i]) {
-			return "", big.NewInt(0), nil, errors.New("invalid token address: " + tokensStr[i])
+			return "", 0, nil, errors.New("invalid token address: " + tokensStr[i])
 		}
 		tokens[i] = common.HexToAddress(tokensStr[i])
 
 		if !common.IsHexAddress(tosStr[i]) {
-			return "", big.NewInt(0), nil, errors.New("invalid to address: " + tosStr[i])
+			return "", 0, nil, errors.New("invalid to address: " + tosStr[i])
 		}
 		tos[i] = common.HexToAddress(tosStr[i])
 
@@ -244,17 +249,17 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 				balance, err = s.BalanceOf(tokenAddrStr, s.fromAddress)
 			}
 			if err != nil {
-				return "", big.NewInt(0), nil, err
+				return "", 0, nil, err
 			}
 			if balance.LessThan(amount) {
-				return "", big.NewInt(0), nil, errors.New("insufficient balance for token: " + tokenAddrStr)
+				return "", 0, nil, errors.New("insufficient balance for token: " + tokenAddrStr)
 			}
 		}
 	}
 
 	auth, err := bind.NewKeyedTransactorWithChainID(s.priKey, s.chainId)
 	if err != nil {
-		return "", big.NewInt(0), nil, err
+		return "", 0, nil, err
 	}
 
 	var lastSignedTx *types.Transaction
@@ -276,11 +281,11 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	if opt.nonce != nil {
 		auth.Nonce = opt.nonce
 	} else {
-		nonce, err := s.client.PendingNonceAt(context.Background(), auth.From)
+		nonceValue, err := s.client.PendingNonceAt(context.Background(), auth.From)
 		if err != nil {
-			return "", big.NewInt(0), nil, err
+			return "", 0, nil, err
 		}
-		auth.Nonce = big.NewInt(int64(nonce))
+		auth.Nonce = big.NewInt(int64(nonceValue))
 	}
 	if opt.value != nil {
 		auth.Value = opt.value
@@ -292,7 +297,7 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	} else {
 		auth.GasPrice, err = s.client.SuggestGasPrice(context.Background())
 		if err != nil {
-			return "", big.NewInt(0), nil, err
+			return "", 0, nil, err
 		}
 	}
 	if opt.useMinGasPrice {
@@ -308,20 +313,20 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	multiTransferContract := chainkitcontracts.NewRecord()
 	err = multiTransferContract.ReadByNameAndChainDbId("MultiTransfer", s.chainDbId)
 	if err != nil {
-		return "", big.NewInt(0), nil, err
+		return "", 0, nil, err
 	}
 
 	instance, err := multitransfer.NewMultitransfer(common.HexToAddress(multiTransferContract.Model.Address), s.client)
 	if err != nil {
-		return "", big.NewInt(0), nil, err
+		return "", 0, nil, err
 	}
 
-	nonce = auth.Nonce
+	nonce = auth.Nonce.Uint64()
 
 	tx, err := instance.MultiTransferToken(auth, tokens, tos, values)
 	if err != nil {
 		if lastSignedTx == nil {
-			return "", big.NewInt(0), nil, err
+			return "", 0, nil, err
 		}
 		hash = lastSignedTx.Hash().Hex()
 		fakeErr = err
@@ -407,7 +412,7 @@ func (s *ChainService) DBTransfer(count int, opts ...Option) error {
 	record.Model.FromAddressType = string(s.fromAddressType)
 	record.Model.FromAddressId = s.fromAddressId
 	record.Model.Hash = txHash
-	record.Model.Nonce = nonce.Uint64()
+	record.Model.Nonce = nonce
 	record.Model.Status = chainkittransferrecords.StatusPending
 	err = record.Create()
 	if err != nil {

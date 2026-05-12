@@ -4,35 +4,53 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/jiajia556/chainkit/pkg/contracts/erc20"
 	"github.com/shopspring/decimal"
 )
 
-func (s *ChainService) ApproveERC20(tokenAddress, spenderAddress string, amount decimal.Decimal, opts ...Option) (string, error) {
+func (s *ChainService) ApproveERC20(tokenAddress, spenderAddress string, amount decimal.Decimal, opts ...Option) (hash string, fakeErr, err error) {
 	if s == nil || s.client == nil {
-		return "", errors.New("chain service not initialized")
+		return "", nil, errors.New("chain service not initialized")
 	}
 	if s.fromAddress == "" {
-		return "", errors.New("chain service from not set")
+		return "", nil, errors.New("chain service from not set")
 	}
 	if !common.IsHexAddress(tokenAddress) {
-		return "", errors.New("invalid token address")
+		return "", nil, errors.New("invalid token address")
 	}
 	if !common.IsHexAddress(spenderAddress) {
-		return "", errors.New("invalid address")
+		return "", nil, errors.New("invalid address")
 	}
 
 	instance, err := erc20.NewErc20(common.HexToAddress(tokenAddress), s.client)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	txOpts, err := s.GetBindTransactOpts(opts...)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
+
+	var lastSignedTx *types.Transaction
+	originalSigner := txOpts.Signer
+	txOpts.Signer = func(addr common.Address, tx *types.Transaction) (*types.Transaction, error) {
+		signedTx, signErr := originalSigner(addr, tx)
+		if signErr != nil {
+			return nil, signErr
+		}
+		lastSignedTx = signedTx
+		return signedTx, nil
+	}
+
 	tx, err := instance.Approve(txOpts, common.HexToAddress(spenderAddress), amount.BigInt())
 	if err != nil {
-		return "", err
+		if lastSignedTx == nil {
+			return "", nil, err
+		}
+		hash = lastSignedTx.Hash().Hex()
+		fakeErr = err
+		return hash, fakeErr, nil
 	}
-	return tx.Hash().Hex(), nil
+	return tx.Hash().Hex(), nil, nil
 }

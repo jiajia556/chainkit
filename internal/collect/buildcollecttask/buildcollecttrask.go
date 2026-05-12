@@ -29,7 +29,7 @@ func Start(ctx context.Context) {
 	chains.Foreach(func(key int, chain *chainkitchains.Record) bool {
 		collectConf := chainkitcollectconfig.NewRecord().GetByChain(chain.Model.Id)
 		if !collectConf.Exists() {
-			log.Error("failed to read collect config", "error", err, "chain db id", chain.Model.Id)
+			log.Error("failed to read collect config", "chain db id", chain.Model.Id)
 			return true
 		}
 
@@ -97,7 +97,7 @@ func handleDepToken(
 		tasking.Model.PlanAmount = canTaskBalance.Model.BalanceAmount
 		tasking.Model.GasRequiredAmount = gasRequiredAmount
 		tasking.Model.GasBalanceBeforeTx = gasBalance
-		tasking.Model.GasLimit = collectConf.Model.DefaultErc20TransferGasLimit
+		tasking.Model.GasLimit = gasLimit
 		tasking.Model.GasPrice = gasPrice
 		tasking.Model.Status = 0
 		_ = tasking.Create()

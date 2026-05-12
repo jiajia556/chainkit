@@ -70,3 +70,19 @@ func (r *Record) GetBalanceFromChain() (decimal.Decimal, error) {
 	}
 	return chainBalance, nil
 }
+
+func (r *Record) Collected(amount decimal.Decimal, hash string) error {
+	chainBalance, err := r.GetBalanceFromChain()
+	if err != nil {
+		return err
+	}
+	sql := fmt.Sprintf(
+		"UPDATE `chain_user_deposit_address_asset_balance` SET `balance_amount` = %s, `last_collect_tx_hash` = %s, `collected_out_amount` = `collected_out_amount` + %s, `updated_at` = %s WHERE `id` = %d;",
+		chainBalance.String(),
+		hash,
+		amount.String(),
+		time.Now().Format("2006-01-02 15:04:05"),
+		r.Model.Id,
+	)
+	return r.DB().Exec(sql).Error
+}

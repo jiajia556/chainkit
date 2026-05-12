@@ -14,6 +14,7 @@ import (
 	"github.com/jiajia556/chainkit/models/chainkitmnemonicaddresses"
 	"github.com/jiajia556/chainkit/models/chainkituserdepositaddress"
 	"github.com/jiajia556/chainkit/pkg/types"
+	"github.com/shopspring/decimal"
 )
 
 const (
@@ -51,15 +52,15 @@ func Nonce(nonce uint64) Option {
 	}
 }
 
-func Value(value *big.Int) Option {
+func Value(value decimal.Decimal) Option {
 	return func(o *transactionOptions) {
-		o.value = value
+		o.value = value.BigInt()
 	}
 }
 
-func GasPrice(gasPrice *big.Int) Option {
+func GasPrice(gasPrice decimal.Decimal) Option {
 	return func(o *transactionOptions) {
-		o.gasPrice = gasPrice
+		o.gasPrice = gasPrice.BigInt()
 	}
 }
 
@@ -69,21 +70,21 @@ func UserMinGasPrice() Option {
 	}
 }
 
-func GasLimit(gasLimit uint64) Option {
+func GasLimit(gasLimit decimal.Decimal) Option {
 	return func(o *transactionOptions) {
-		o.gasLimit = gasLimit
+		o.gasLimit = gasLimit.BigInt().Uint64()
 	}
 }
 
-func GasTipCap(tip *big.Int) Option {
+func GasTipCap(tip decimal.Decimal) Option {
 	return func(o *transactionOptions) {
-		o.gasTipCap = tip
+		o.gasTipCap = tip.BigInt()
 	}
 }
 
-func GasFeeCap(fee *big.Int) Option {
+func GasFeeCap(fee decimal.Decimal) Option {
 	return func(o *transactionOptions) {
-		o.gasFeeCap = fee
+		o.gasFeeCap = fee.BigInt()
 	}
 }
 
@@ -250,4 +251,33 @@ func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, 
 	}
 
 	return transactOpts, nil
+}
+
+func (s *ChainService) GetFromAddress() (string, error) {
+	if s.fromAddressType == "" {
+		return "", errors.New("from address not set")
+	}
+	return s.fromAddress, nil
+}
+
+func (s *ChainService) GetFromId() (types.ServiceAddressType, uint64, error) {
+	if s.fromAddressType == "" {
+		return "", 0, errors.New("from address not set")
+	}
+	return s.fromAddressType, s.fromAddressId, nil
+}
+
+func (s *ChainService) GetChainDbId() uint64 {
+	return s.chainDbId
+}
+
+func (s *ChainService) GetFromETHBalance() (decimal.Decimal, error) {
+	if s.fromAddressType == "" {
+		return decimal.Zero, errors.New("from address not set")
+	}
+	balance, err := s.client.BalanceAt(context.Background(), common.HexToAddress(s.fromAddress), nil)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return decimal.NewFromBigInt(balance, 0), nil
 }

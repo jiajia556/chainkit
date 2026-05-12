@@ -168,3 +168,15 @@ func (s *ChainService) IsNonceOccupied(address string, nonce uint64) (bool, erro
 
 	return nonce < pendingNonce, nil
 }
+
+func (s *ChainService) GetGasUsedAndEffectiveGasPrice(hash string) (decimal.Decimal, decimal.Decimal, error) {
+	receipt, err := s.client.TransactionReceipt(context.Background(), common.HexToHash(hash))
+	if err != nil {
+		return decimal.Zero, decimal.Zero, err
+	}
+
+	gasUsed := receipt.GasUsed
+	effectiveGasPrice := receipt.EffectiveGasPrice
+
+	return decimal.NewFromUint64(gasUsed), decimal.NewFromBigInt(effectiveGasPrice, 0), nil
+}

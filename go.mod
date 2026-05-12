@@ -4,6 +4,7 @@ go 1.25
 
 require (
 	github.com/ethereum/go-ethereum v1.17.1
+	github.com/howeyc/gopass v0.0.0-20210920133722-c8aef6fb66ef
 	github.com/jiajia556/tool-box v1.0.0
 	github.com/shopspring/decimal v1.4.0
 	github.com/tyler-smith/go-bip32 v1.0.0
@@ -49,6 +50,7 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/term v0.40.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	gorm.io/driver/mysql v1.5.6 // indirect
 )
