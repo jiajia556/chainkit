@@ -66,6 +66,27 @@ func (r *Record) CreateNewMnemonic(password, remark string) error {
 	return r.DB().Create(r.Model).Error
 }
 
+func (r *Record) CreateAndGetNewMnemonic(password, remark string) (string, error) {
+	words, err := mnemonic.NewWords()
+	if err != nil {
+		return "", err
+	}
+
+	cipher, err := cryptox.EncryptWithPassword(1, password, []byte(words))
+	if err != nil {
+		return "", err
+	}
+
+	r.Model.Words = cipher
+	r.Model.Remark = remark
+
+	err = r.DB().Create(r.Model).Error
+	if err != nil {
+		return "", err
+	}
+	return words, nil
+}
+
 // ================== seed 管理（核心） ==================
 
 func (r *Record) getSeed(password string) ([]byte, error) {

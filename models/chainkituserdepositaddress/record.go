@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/jiajia556/chainkit/models"
+	"github.com/jiajia556/chainkit/pkg/utils"
 	"github.com/jiajia556/tool-box/cryptox"
 	"github.com/jiajia556/tool-box/mysqlx"
 )
@@ -34,6 +35,32 @@ func NewRecord(session ...mysqlx.Session) *Record {
 		},
 	}
 	return r
+}
+
+func (r *Record) BatchCreate(count int, password, remark string) (createdCount int, err error) {
+	for i := 0; i < count; i++ {
+		priKey, addr, genErr := utils.NewKey()
+		if genErr != nil {
+			err = genErr
+			return
+		}
+		priKeyByte := crypto.FromECDSA(priKey)
+		enPriKey, encErr := cryptox.EncryptWithPassword(1, password, priKeyByte)
+		if encErr != nil {
+			err = encErr
+			return
+		}
+		record := NewRecord()
+		record.Model.Address = addr.Hex()
+		record.Model.PrivateKeyEncrypted = enPriKey
+		record.Model.Remark = remark
+		if createErr := record.Create(); createErr != nil {
+			err = createErr
+			return
+		}
+		createdCount++
+	}
+	return
 }
 
 func (r *Record) ReadByAddress(address string) *Record {

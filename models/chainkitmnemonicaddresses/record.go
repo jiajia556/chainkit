@@ -88,6 +88,11 @@ func (r *Record) ReadLastByMnemonicId(mnemonicId uint64) (*Record, error) {
 	return r, nil
 }
 
+func (r *Record) GetByMnemonicIdAndIndex(mnemonicId uint64, index uint32) *Record {
+	r.DB().Where("mnemonic_id = ? AND `index` = ?", mnemonicId, index).Take(r.Model)
+	return r
+}
+
 //
 // ================== 批量生成 ==================
 //
@@ -146,6 +151,30 @@ func (r *Record) BatchCreate(
 	}
 
 	return success, nil
+}
+
+func (r *Record) CreateByMnemonicAndIndex(mnemonicId uint64, index uint32, password, remark string) error {
+	mn := chainkitmnemonics.NewRecord()
+	if err := mn.Read(mnemonicId); err != nil {
+		return err
+	}
+
+	session, err := mn.NewSession(password)
+	if err != nil {
+		return err
+	}
+
+	addr, err := session.GetAddress(index)
+	if err != nil {
+		return err
+	}
+
+	r.Model.MnemonicId = mnemonicId
+	r.Model.Index = index
+	r.Model.Address = addr
+	r.Model.Remark = remark
+
+	return r.Create()
 }
 
 //

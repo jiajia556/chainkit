@@ -14,10 +14,10 @@ import (
 
 type Config struct {
 	Mysql     mysqlx.MysqlConfig `json:"mysql" yaml:"mysql"`
-	MysqlInit mysqlInit          `json:"mysql_init" yaml:"mysql_init"`
+	MysqlInit MysqlInit          `json:"mysql_init" yaml:"mysql_init"`
 }
 
-type mysqlInit struct {
+type MysqlInit struct {
 	Chains        []*chainkitchains.ChainChains               `json:"chains" yaml:"chains"`
 	Tokens        []*chainkittokens.ChainTokens               `json:"tokens" yaml:"tokens"`
 	Contracts     []*chainkitcontracts.ChainContracts         `json:"contracts" yaml:"contracts"`
