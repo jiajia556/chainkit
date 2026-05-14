@@ -27,6 +27,9 @@ func NewList(session ...mysqlx.Session) *List {
 		BaseList: &models.BaseList[*ChainDepositRecord, *Record]{
 			Session: dbSession,
 			Records: &records,
+			RecordFactory: func() *Record {
+				return NewRecord(dbSession)
+			},
 		},
 	}
 

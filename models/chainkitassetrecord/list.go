@@ -27,8 +27,19 @@ func NewList(session ...mysqlx.Session) *List {
 		BaseList: &models.BaseList[*ChainAssetRecord, *Record]{
 			Session: dbSession,
 			Records: &records,
+			RecordFactory: func() *Record {
+				return NewRecord(dbSession)
+			},
 		},
 	}
 
+	return l
+}
+
+func (l *List) GetByUserIDAndTokenGroupID(userId uint64, modules []string, start int, limit int, symbols []string) *List {
+	var total int64
+	l.DB().Debug().Where("user_id = ? AND symbol IN (?) and biz_type IN (?)", userId, symbols, modules).Offset(start).Limit(limit).Order("id DESC").Find(l.Records)
+	l.DB().Model(&ChainAssetRecord{}).Where("user_id = ? AND symbol IN (?) and biz_type IN (?)", userId, symbols, modules).Count(&total)
+	l.SetTotal(total)
 	return l
 }

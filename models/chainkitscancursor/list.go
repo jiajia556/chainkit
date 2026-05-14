@@ -27,6 +27,9 @@ func NewList(ctx ...mysqlx.Session) *List {
 		BaseList: &models.BaseList[*ChainScanCursor, *Record]{
 			Session: dbSession,
 			Records: &records,
+			RecordFactory: func() *Record {
+				return NewRecord(dbSession)
+			},
 		},
 	}
 
