@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jiajia556/chainkit/models"
 	"github.com/jiajia556/chainkit/models/chainkitassetrecord"
+	"github.com/jiajia556/chainkit/models/chainkittokens"
 	"github.com/jiajia556/tool-box/mysqlx"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -51,11 +52,12 @@ func NewRecord(session ...mysqlx.Session) *Record {
 }
 
 var (
-	errAssetNotLoaded     = fmt.Errorf("asset not loaded; call GetByUserAndToken first")
+	ErrAssetNotLoaded     = fmt.Errorf("asset not loaded; call GetByUserAndToken first")
 	ErrDuplicateRequestID = errors.New("duplicate request_id")
 	// ErrInsufficientAvailableBalance indicates the available balance is insufficient for the operation.
 	// Use errors.Is(err, ErrInsufficientAvailableBalance) to check.
 	ErrInsufficientAvailableBalance = errors.New("insufficient available balance")
+	ErrTokenNotFound                = errors.New("token not found")
 )
 
 const amountDecimalType = "DECIMAL(36,0)"
@@ -84,8 +86,14 @@ func (r *Record) GetByUserAndTokenE(userId, tokenId uint64) (*Record, error) {
 	}
 
 	// 2) create (safe under concurrency thanks to uk_user_token)
+	token := chainkittokens.NewRecord(r.Session)
+	_ = token.Read(tokenId)
+	if !token.Exists() {
+		return r, ErrTokenNotFound
+	}
 	r.Model.UserId = userId
 	r.Model.TokenId = tokenId
+	r.Model.Symbol = token.Model.Symbol
 	if err := r.Create(); err != nil {
 		if isDuplicateKeyError(err) {
 			// someone else created it; re-load
@@ -325,7 +333,7 @@ func (r *Record) ensureLoaded() error {
 		return r.Err
 	}
 	if r.Model == nil || r.Model.Id == 0 {
-		return errAssetNotLoaded
+		return ErrAssetNotLoaded
 	}
 	return nil
 }
@@ -393,6 +401,7 @@ func (r *Record) tryCreateAssetRecordPlaceholder(availableChange, frozenChange, 
 	record := chainkitassetrecord.NewRecord(r.Session)
 	record.Model.UserId = r.Model.UserId
 	record.Model.TokenId = r.Model.TokenId
+	record.Model.Symbol = r.Model.Symbol
 	record.Model.BizType = bizType
 	record.Model.BizId = bizId
 	record.Model.RequestId = requestId
