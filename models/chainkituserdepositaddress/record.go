@@ -1,14 +1,19 @@
 package chainkituserdepositaddress
 
 import (
+	"context"
 	"crypto/ecdsa"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/jiajia556/chainkit/models"
 	"github.com/jiajia556/chainkit/pkg/utils"
 	"github.com/jiajia556/tool-box/cryptox"
+	"github.com/jiajia556/tool-box/locker"
 	"github.com/jiajia556/tool-box/mysqlx"
+	"gorm.io/gorm"
 )
 
 type Record struct {
@@ -74,4 +79,39 @@ func (r *Record) GetPriKey(password string) (*ecdsa.PrivateKey, error) {
 		return nil, err
 	}
 	return crypto.ToECDSA(priKeyBytes)
+}
+
+func (r *Record) GetByUserId(userId string) (res *Record, err error) {
+	ctx := context.Background()
+	key := fmt.Sprintf("GetByUserId:%s", userId)
+	instance, err := locker.Lock(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if unlockErr := instance.Unlock(ctx); unlockErr != nil && err == nil {
+			err = unlockErr
+		}
+	}()
+
+	err = r.DB().Where("user_id = ?", userId).Take(r.Model).Error
+	if err == nil && r.Exists() {
+		return r, nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	tx := r.DB().Exec("UPDATE `chain_user_deposit_address` SET `user_id` = ? WHERE `user_id` = 0 LIMIT 1", userId)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	if tx.RowsAffected == 0 {
+		return nil, errors.New("no available deposit address")
+	}
+	if err = r.DB().Where("user_id = ?", userId).Take(r.Model).Error; err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
