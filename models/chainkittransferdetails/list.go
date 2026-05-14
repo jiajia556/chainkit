@@ -11,22 +11,23 @@ type List struct {
 }
 
 func NewList(ctx ...mysqlx.Session) *List {
-	var dbContext mysqlx.Session
+	var dbSession mysqlx.Session
 	if len(ctx) > 0 {
-		dbContext = ctx[0]
+		dbSession = ctx[0]
 	} else {
-		dbContext = mysqlx.NewTxSession()
+		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbContext.CreateTableIfNotExists(new(ChainTransferDetails))
+		err := dbSession.CreateTableIfNotExists(new(ChainTransferDetails))
 		if err != nil {
 			panic(err)
 		}
 	}
+	records := make([]*ChainTransferDetails, 0)
 	l := &List{
 		BaseList: &models.BaseList[*ChainTransferDetails, *Record]{
-			Session: dbContext,
-			Records: make([]*ChainTransferDetails, 0),
+			Session: dbSession,
+			Records: &records,
 		},
 	}
 
@@ -36,5 +37,5 @@ func NewList(ctx ...mysqlx.Session) *List {
 func (l *List) FindByFromAddressIdAndStatus(fromAddressId uint64, fromAddressType types.ServiceAddressType, status int8, count int) error {
 	return l.DB().Where("from_address_id = ? AND from_address_type = ? AND status = ?", fromAddressId, fromAddressType, status).
 		Order("id ASC").
-		Limit(count).Find(&l.Records).Error
+		Limit(count).Find(l.Records).Error
 }

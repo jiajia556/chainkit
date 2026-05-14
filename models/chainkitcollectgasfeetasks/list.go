@@ -22,10 +22,11 @@ func NewList(session ...mysqlx.Session) *List {
 			panic(err)
 		}
 	}
+	records := make([]*ChainCollectGasFeeTasks, 0)
 	l := &List{
 		BaseList: &models.BaseList[*ChainCollectGasFeeTasks, *Record]{
 			Session: dbSession,
-			Records: make([]*ChainCollectGasFeeTasks, 0),
+			Records: &records,
 		},
 	}
 
@@ -33,11 +34,11 @@ func NewList(session ...mysqlx.Session) *List {
 }
 
 func (l *List) GetWaitingList(chainDbId uint64) *List {
-	l.DB().Where("chain_db_id = ? AND status = 0", chainDbId).Find(&l.Records)
+	l.DB().Where("chain_db_id = ? AND status = 0", chainDbId).Find(l.Records)
 	return l
 }
 
 func (l *List) GetSentList(chainDbId uint64) *List {
-	l.DB().Where("chain_db_id = ? AND status = 2", chainDbId).Find(&l.Records)
+	l.DB().Where("chain_db_id = ? AND status = 2", chainDbId).Find(l.Records)
 	return l
 }

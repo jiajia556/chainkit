@@ -10,22 +10,23 @@ type List struct {
 }
 
 func NewList(ctx ...mysqlx.Session) *List {
-	var dbContext mysqlx.Session
+	var dbSession mysqlx.Session
 	if len(ctx) > 0 {
-		dbContext = ctx[0]
+		dbSession = ctx[0]
 	} else {
-		dbContext = mysqlx.NewTxSession()
+		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbContext.CreateTableIfNotExists(new(ChainTokens))
+		err := dbSession.CreateTableIfNotExists(new(ChainTokens))
 		if err != nil {
 			panic(err)
 		}
 	}
+	records := make([]*ChainTokens, 0)
 	l := &List{
 		BaseList: &models.BaseList[*ChainTokens, *Record]{
-			Session: dbContext,
-			Records: make([]*ChainTokens, 0),
+			Session: dbSession,
+			Records: &records,
 		},
 	}
 
@@ -33,6 +34,6 @@ func NewList(ctx ...mysqlx.Session) *List {
 }
 
 func (l *List) FindByChain(chainDbId uint64) *List {
-	l.DB().Where("chain_db_id = ?", chainDbId).Find(&l.Records)
+	l.DB().Where("chain_db_id = ?", chainDbId).Find(l.Records)
 	return l
 }

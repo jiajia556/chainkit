@@ -10,22 +10,23 @@ type List struct {
 }
 
 func NewList(ctx ...mysqlx.Session) *List {
-	var dbContext mysqlx.Session
+	var dbSession mysqlx.Session
 	if len(ctx) > 0 {
-		dbContext = ctx[0]
+		dbSession = ctx[0]
 	} else {
-		dbContext = mysqlx.NewTxSession()
+		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbContext.CreateTableIfNotExists(new(ChainChains))
+		err := dbSession.CreateTableIfNotExists(new(ChainChains))
 		if err != nil {
 			panic(err)
 		}
 	}
+	records := make([]*ChainChains, 0)
 	l := &List{
 		BaseList: &models.BaseList[*ChainChains, *Record]{
-			Session: dbContext,
-			Records: make([]*ChainChains, 0),
+			Session: dbSession,
+			Records: &records,
 		},
 	}
 

@@ -25,10 +25,11 @@ func NewList(session ...mysqlx.Session) *List {
 			panic(err)
 		}
 	}
+	records := make([]*ChainUserDepositAddressAssetBalance, 0)
 	l := &List{
 		BaseList: &models.BaseList[*ChainUserDepositAddressAssetBalance, *Record]{
 			Session: dbSession,
-			Records: make([]*ChainUserDepositAddressAssetBalance, 0),
+			Records: &records,
 		},
 	}
 
@@ -37,6 +38,6 @@ func NewList(session ...mysqlx.Session) *List {
 
 func (l *List) GetCanTaskByTokenBalance(tokenId uint64, minCollectAmount decimal.Decimal) *List {
 	where := fmt.Sprintf("token_id = %d AND balance_amount >= %s", tokenId, minCollectAmount.String())
-	l.DB().Where(where).Find(&l.Records)
+	l.DB().Where(where).Find(l.Records)
 	return l
 }

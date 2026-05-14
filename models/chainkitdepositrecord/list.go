@@ -22,10 +22,11 @@ func NewList(session ...mysqlx.Session) *List {
 			panic(err)
 		}
 	}
+	records := make([]*ChainDepositRecord, 0)
 	l := &List{
 		BaseList: &models.BaseList[*ChainDepositRecord, *Record]{
 			Session: dbSession,
-			Records: make([]*ChainDepositRecord, 0),
+			Records: &records,
 		},
 	}
 

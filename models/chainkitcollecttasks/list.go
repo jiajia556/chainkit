@@ -22,10 +22,11 @@ func NewList(session ...mysqlx.Session) *List {
 			panic(err)
 		}
 	}
+	records := make([]*ChainCollectTasks, 0)
 	l := &List{
 		BaseList: &models.BaseList[*ChainCollectTasks, *Record]{
 			Session: dbSession,
-			Records: make([]*ChainCollectTasks, 0),
+			Records: &records,
 		},
 	}
 
@@ -33,16 +34,16 @@ func NewList(session ...mysqlx.Session) *List {
 }
 
 func (l *List) GetWaitingList(chainDbId uint64) *List {
-	l.DB().Where("chain_db_id = ? AND status = 0", chainDbId).Find(&l.Records)
+	l.DB().Where("chain_db_id = ? AND status = 0", chainDbId).Find(l.Records)
 	return l
 }
 
 func (l *List) GetCanSendList(chainDbId uint64) *List {
-	l.DB().Where("chain_db_id = ? AND status = 2", chainDbId).Find(&l.Records)
+	l.DB().Where("chain_db_id = ? AND status = 2", chainDbId).Find(l.Records)
 	return l
 }
 
 func (l *List) GetCentList(chainDbId uint64) *List {
-	l.DB().Where("chain_db_id = ? AND status = 4", chainDbId).Find(&l.Records)
+	l.DB().Where("chain_db_id = ? AND status = 4", chainDbId).Find(l.Records)
 	return l
 }

@@ -22,10 +22,11 @@ func NewList(session ...mysqlx.Session) *List {
 			panic(err)
 		}
 	}
+	records := make([]*ChainDepositTokens, 0)
 	l := &List{
 		BaseList: &models.BaseList[*ChainDepositTokens, *Record]{
 			Session: dbSession,
-			Records: make([]*ChainDepositTokens, 0),
+			Records: &records,
 		},
 	}
 
@@ -33,6 +34,6 @@ func NewList(session ...mysqlx.Session) *List {
 }
 
 func (l *List) FindAvailableByChainDBID(chainDBID uint64) *List {
-	l.DB().Where("chain_db_id = ?　AND status = 1", chainDBID).Find(&l.Records)
+	l.DB().Where("chain_db_id = ?　AND status = 1", chainDBID).Find(l.Records)
 	return l
 }
