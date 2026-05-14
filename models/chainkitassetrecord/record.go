@@ -30,3 +30,11 @@ func NewRecord(session ...mysqlx.Session) *Record {
 	}
 	return r
 }
+
+func (l *List) GetByUserIDAndTokenGroupID(userID uint64, modules []string, start, limit int, symbol []string) *List {
+	var total int64
+	l.DB().Where("user_id = ? AND symbol IN (?) and module IN (?)", userID, symbol, modules).Offset(start).Limit(limit).Order("id DESC").Find(&l.Records)
+	l.DB().Model(&ChainAssetRecord{}).Where("user_id = ? AND symbol IN (?) and module IN (?)", userID, symbol, modules).Count(&total)
+	l.SetTotal(total)
+	return l
+}
