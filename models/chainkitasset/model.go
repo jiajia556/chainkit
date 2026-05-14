@@ -13,7 +13,7 @@ type ChainAsset struct {
 	Symbol       string          `gorm:"column:symbol;notNull" json:"symbol"`
 	Available    decimal.Decimal `gorm:"column:available;notNull;default:0" json:"available"`
 	Frozen       decimal.Decimal `gorm:"column:frozen;notNull;default:0" json:"frozen"`
-	Total        decimal.Decimal `gorm:"column:total" json:"total"`
+	Total        decimal.Decimal `gorm:"column:total;->" json:"total"`
 	Version      uint64          `gorm:"column:version;unsigned;notNull;default:0" json:"version"`
 	CreatedAt    time.Time       `gorm:"column:created_at;notNull;default:current_timestamp" json:"created_at"`
 	UpdatedAt    time.Time       `gorm:"column:updated_at;notNull;default:current_timestamp" json:"updated_at"`
