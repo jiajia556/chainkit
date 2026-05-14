@@ -81,9 +81,9 @@ func (r *Record) GetPriKey(password string) (*ecdsa.PrivateKey, error) {
 	return crypto.ToECDSA(priKeyBytes)
 }
 
-func (r *Record) GetByUserId(userId string) (res *Record, err error) {
+func (r *Record) GetByUserId(userId uint64) (res *Record, err error) {
 	ctx := context.Background()
-	key := fmt.Sprintf("GetByUserId:%s", userId)
+	key := fmt.Sprintf("GetByUserId:%d", userId)
 	instance, err := locker.Lock(ctx, key)
 	if err != nil {
 		return nil, err
