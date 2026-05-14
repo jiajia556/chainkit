@@ -7,6 +7,7 @@ import (
 	"github.com/jiajia556/chainkit/models/chainkitcollecttokens"
 	"github.com/jiajia556/chainkit/models/chainkitcontracts"
 	"github.com/jiajia556/chainkit/models/chainkitdeposittokens"
+	"github.com/jiajia556/chainkit/models/chainkittokengroups"
 	"github.com/jiajia556/chainkit/models/chainkittokens"
 
 	"github.com/jiajia556/tool-box/mysqlx"
@@ -19,6 +20,7 @@ type Config struct {
 
 type MysqlInit struct {
 	Chains        []*chainkitchains.ChainChains               `json:"chains" yaml:"chains"`
+	TokenGroups   []*chainkittokengroups.ChainTokenGroups     `json:"token_groups" yaml:"token_groups"`
 	Tokens        []*chainkittokens.ChainTokens               `json:"tokens" yaml:"tokens"`
 	Contracts     []*chainkitcontracts.ChainContracts         `json:"contracts" yaml:"contracts"`
 	CollectConfig []*chainkitcollectconfig.ChainCollectConfig `json:"collect_config" yaml:"collect_config"`

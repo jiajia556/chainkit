@@ -30,7 +30,7 @@ func GetRootCmd() *cobra.Command {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringP("config", "c", "", "Path to configuration file")
+	rootCmd.PersistentFlags().StringP("config", "c", "./chainkit_config.json", "Path to configuration file")
 	rootCmd.AddCommand(
 		initdata.GetCommand(),
 		create.GetCommand(),

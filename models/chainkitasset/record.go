@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jiajia556/chainkit/models"
 	"github.com/jiajia556/chainkit/models/chainkitassetrecord"
-	"github.com/jiajia556/chainkit/models/chainkittokens"
+	"github.com/jiajia556/chainkit/models/chainkittokengroups"
 	"github.com/jiajia556/tool-box/mysqlx"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -57,47 +57,47 @@ var (
 	// ErrInsufficientAvailableBalance indicates the available balance is insufficient for the operation.
 	// Use errors.Is(err, ErrInsufficientAvailableBalance) to check.
 	ErrInsufficientAvailableBalance = errors.New("insufficient available balance")
-	ErrTokenNotFound                = errors.New("token not found")
+	ErrTokenGroupNotFound           = errors.New("token group not found")
 )
 
 const amountDecimalType = "DECIMAL(36,0)"
 
-// GetByUserAndToken loads the asset by user/token, creating it if it does not exist.
+// GetByUserAndTokenGroup loads the asset by user/tokenGroup, creating it if it does not exist.
 // Parameters:
 //   - userId: user identifier.
-//   - tokenId: token identifier.
-func (r *Record) GetByUserAndToken(userId, tokenId uint64) *Record {
-	_, err := r.GetByUserAndTokenE(userId, tokenId)
+//   - tokenGroupId: token group identifier.
+func (r *Record) GetByUserAndTokenGroup(userId, tokenGroupId uint64) *Record {
+	_, err := r.GetByUserAndTokenGroupE(userId, tokenGroupId)
 	r.Err = err
 	return r
 }
 
-// GetByUserAndTokenE is the error-returning variant of GetByUserAndToken.
-func (r *Record) GetByUserAndTokenE(userId, tokenId uint64) (*Record, error) {
+// GetByUserAndTokenGroupE is the error-returning variant of GetByUserAndTokenGroup.
+func (r *Record) GetByUserAndTokenGroupE(userId, tokenGroupId uint64) (*Record, error) {
 	if r.Model == nil {
 		r.Model = new(ChainAsset)
 	}
 
 	// 1) read
-	if err := r.DB().Where("user_id = ? AND token_id = ?", userId, tokenId).Take(r.Model).Error; err == nil {
+	if err := r.DB().Where("user_id = ? AND token_group_id = ?", userId, tokenGroupId).Take(r.Model).Error; err == nil {
 		return r, nil
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return r, err
 	}
 
 	// 2) create (safe under concurrency thanks to uk_user_token)
-	token := chainkittokens.NewRecord(r.Session)
-	_ = token.Read(tokenId)
-	if !token.Exists() {
-		return r, ErrTokenNotFound
+	tokenGroup := chainkittokengroups.NewRecord(r.Session)
+	_ = tokenGroup.Read(tokenGroupId)
+	if !tokenGroup.Exists() {
+		return r, ErrTokenGroupNotFound
 	}
 	r.Model.UserId = userId
-	r.Model.TokenId = tokenId
-	r.Model.Symbol = token.Model.Symbol
+	r.Model.TokenGroupId = tokenGroupId
+	r.Model.Symbol = tokenGroup.Model.Symbol
 	if err := r.Create(); err != nil {
 		if isDuplicateKeyError(err) {
 			// someone else created it; re-load
-			if err2 := r.DB().Where("user_id = ? AND token_id = ?", userId, tokenId).Take(r.Model).Error; err2 != nil {
+			if err2 := r.DB().Where("user_id = ? AND token_group_id = ?", userId, tokenGroupId).Take(r.Model).Error; err2 != nil {
 				return r, err2
 			}
 			return r, nil
@@ -400,7 +400,7 @@ func (r *Record) withTransaction(fn func(txRecord *Record) error) error {
 func (r *Record) tryCreateAssetRecordPlaceholder(availableChange, frozenChange, availableBefore, frozenBefore decimal.Decimal, bizType string, bizId uint64, requestId string, remark string) (recordId uint64, err error) {
 	record := chainkitassetrecord.NewRecord(r.Session)
 	record.Model.UserId = r.Model.UserId
-	record.Model.TokenId = r.Model.TokenId
+	record.Model.TokenGroupId = r.Model.TokenGroupId
 	record.Model.Symbol = r.Model.Symbol
 	record.Model.BizType = bizType
 	record.Model.BizId = bizId

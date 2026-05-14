@@ -50,7 +50,7 @@ Output:
 			utils.OutputFatal("Init MySQL failed", err)
 		}
 		password, _ := cmd.Flags().GetString("password")
-		if password != "" {
+		if password == "" {
 			fmt.Println("enter password:")
 			passwordByte, err := gopass.GetPasswd()
 			if err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/jiajia556/chainkit/models/chainkitcollecttokens"
 	"github.com/jiajia556/chainkit/models/chainkitcontracts"
 	"github.com/jiajia556/chainkit/models/chainkitdeposittokens"
+	"github.com/jiajia556/chainkit/models/chainkittokengroups"
 	"github.com/jiajia556/chainkit/models/chainkittokens"
 	"github.com/jiajia556/tool-box/mysqlx"
 	"github.com/shopspring/decimal"
@@ -30,6 +31,9 @@ func genExampleConfig() {
 					ChainId:           1,
 					SafeConfirmations: 12,
 				},
+			},
+			TokenGroups: []*chainkittokengroups.ChainTokenGroups{
+				{},
 			},
 			Tokens: []*chainkittokens.ChainTokens{
 				{

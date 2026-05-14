@@ -6,12 +6,14 @@ import (
 	"github.com/jiajia556/chainkit/internal/chainkit/config"
 	"github.com/jiajia556/chainkit/models/chainkitchains"
 	"github.com/jiajia556/chainkit/models/chainkitcollectconfig"
+	"github.com/jiajia556/chainkit/models/chainkitcollecttokens"
 	"github.com/jiajia556/chainkit/models/chainkitcontracts"
 	"github.com/jiajia556/chainkit/models/chainkitdeposittokens"
+	"github.com/jiajia556/chainkit/models/chainkittokengroups"
 	"github.com/jiajia556/chainkit/models/chainkittokens"
 )
 
-func initData(conf *config.Config, initChains, initTokens, initContracts, initCollectConfig, initCollectTokens, initDepositTokens bool) {
+func initData(conf *config.Config, initChains, initTokenGroups, initTokens, initContracts, initCollectConfig, initCollectTokens, initDepositTokens bool) {
 	if initChains {
 		for _, chainConf := range conf.MysqlInit.Chains {
 			chain := chainkitchains.NewRecord()
@@ -19,6 +21,17 @@ func initData(conf *config.Config, initChains, initTokens, initContracts, initCo
 			err := chain.Create()
 			if err != nil {
 				fmt.Println("failed to create chain:", chain.Model, "error: ", err)
+			}
+		}
+	}
+
+	if initTokenGroups {
+		for _, tokenGroupConf := range conf.MysqlInit.TokenGroups {
+			tokenGroup := chainkittokengroups.NewRecord()
+			tokenGroup.SetModel(tokenGroupConf)
+			err := tokenGroup.Create()
+			if err != nil {
+				fmt.Println("failed to create token group:", tokenGroup.Model, "error: ", err)
 			}
 		}
 	}
@@ -58,7 +71,7 @@ func initData(conf *config.Config, initChains, initTokens, initContracts, initCo
 
 	if initCollectTokens {
 		for _, collectTokenConf := range conf.MysqlInit.CollectTokens {
-			collectToken := chainkittokens.NewRecord()
+			collectToken := chainkitcollecttokens.NewRecord()
 			collectToken.SetModel(collectTokenConf)
 			err := collectToken.Create()
 			if err != nil {
@@ -73,7 +86,7 @@ func initData(conf *config.Config, initChains, initTokens, initContracts, initCo
 			depositToken.SetModel(depositTokenConf)
 			err := depositToken.Create()
 			if err != nil {
-				fmt.Println("failed to create collect token:", depositToken.Model, "error: ", err)
+				fmt.Println("failed to create deposit token:", depositToken.Model, "error: ", err)
 			}
 		}
 	}

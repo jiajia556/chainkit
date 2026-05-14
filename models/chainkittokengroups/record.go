@@ -1,4 +1,4 @@
-package chainkitassetrecord
+package chainkittokengroups
 
 import (
 	"github.com/jiajia556/chainkit/models"
@@ -6,7 +6,7 @@ import (
 )
 
 type Record struct {
-	*models.BaseRecord[*ChainAssetRecord]
+	*models.BaseRecord[*ChainTokenGroups]
 }
 
 func NewRecord(session ...mysqlx.Session) *Record {
@@ -17,15 +17,15 @@ func NewRecord(session ...mysqlx.Session) *Record {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainAssetRecord))
+		err := dbSession.CreateTableIfNotExists(new(ChainTokenGroups))
 		if err != nil {
 			panic(err)
 		}
 	}
 	r := &Record{
-		BaseRecord: &models.BaseRecord[*ChainAssetRecord]{
+		BaseRecord: &models.BaseRecord[*ChainTokenGroups]{
 			Session: dbSession,
-			Model:   new(ChainAssetRecord),
+			Model:   new(ChainTokenGroups),
 		},
 	}
 	return r

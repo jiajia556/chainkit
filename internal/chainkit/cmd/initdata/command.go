@@ -39,6 +39,7 @@ You must choose at least one category flag (e.g. --chains).
 			utils.OutputFatal("Init MySQL failed", err)
 		}
 		initChains, _ := cmd.Flags().GetBool("chains")
+		initTokenGroups, _ := cmd.Flags().GetBool("token-groups")
 		initTokens, _ := cmd.Flags().GetBool("tokens")
 		initContracts, _ := cmd.Flags().GetBool("contracts")
 		initCollectConfig, _ := cmd.Flags().GetBool("collect-config")
@@ -47,7 +48,7 @@ You must choose at least one category flag (e.g. --chains).
 		if !initChains && !initTokens && !initContracts && !initCollectConfig && !initCollectTokens && !initDepositTokens {
 			utils.OutputFatal("at least one of the following flags must be set: --chains, --tokens, --contracts, --collect-config, --collect-tokens, --deposit-tokens")
 		}
-		initData(conf, initChains, initTokens, initContracts, initCollectConfig, initCollectTokens, initDepositTokens)
+		initData(conf, initChains, initTokenGroups, initTokens, initContracts, initCollectConfig, initCollectTokens, initDepositTokens)
 	},
 }
 
@@ -57,6 +58,7 @@ func GetCommand() *cobra.Command {
 
 func init() {
 	initDataCmd.Flags().BoolP("chains", "", false, "init chains")
+	initDataCmd.Flags().BoolP("token-groups", "", false, "init token groups")
 	initDataCmd.Flags().BoolP("tokens", "", false, "init tokens")
 	initDataCmd.Flags().BoolP("contracts", "", false, "init contracts")
 	initDataCmd.Flags().BoolP("collect-config", "", false, "init collect config")

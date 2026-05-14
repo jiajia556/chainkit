@@ -131,7 +131,7 @@ func handleDeposit(mysqlSession *mysqlx.TxSession, log types.Log, eventLogId uin
 		return nil
 	}
 
-	userAsset := chainkitasset.NewRecord(mysqlSession).GetByUserAndToken(userDepAddr.Model.UserId, token.Model.Id)
+	userAsset := chainkitasset.NewRecord(mysqlSession).GetByUserAndTokenGroup(userDepAddr.Model.UserId, token.Model.TokenGroupId)
 	_ = userAsset.IncreaseBalance(amount, "deposit", depRecord.Model.Id, fmt.Sprintf("deposit_%d", depRecord.Model.Id), "")
 
 	return nil
