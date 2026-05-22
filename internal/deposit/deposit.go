@@ -21,13 +21,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+var BlockNum uint64
+
 func Start(ctx context.Context) {
+	log.Debug("deposit service started")
 	chains := chainkitchains.NewList()
 	err := chains.FindAll()
 	if err != nil {
 		log.Error("failed to find chains", "error", err)
 		return
 	}
+	log.Debug("found chains", "count", len(*chains.Records))
 	wg := &sync.WaitGroup{}
 	chains.Foreach(func(key int, chain *chainkitchains.Record) bool {
 		wg.Add(1)
@@ -38,8 +42,11 @@ func Start(ctx context.Context) {
 }
 
 func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
+	log.Debug("handling chain")
 	defer wg.Done()
 	depositTokens := chainkitdeposittokens.NewList().FindAvailableByChainDBID(chain.Model.Id)
+
+	log.Debug("found deposit tokens", "chainDbId", chain.Model.Id, "count", len(*depositTokens.Records))
 
 	cs, err := service.NewChainService(chain.Model.Id)
 	if err != nil {
@@ -52,8 +59,10 @@ func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
 		token := chainkittokens.NewRecord()
 		_ = token.Read(depositToken.Model.TokenId)
 		if !token.Exists() || token.Model.ContractAddress == "0x0000000000000000000000000000000000000000" {
+			log.Error("invalid token", "token", token.Model.ContractAddress)
 			return true
 		}
+		log.Debug("scanning deposit token", "chainDbId", chain.Model.Id, "tokenId", token.Model.Id, "contractAddress", token.Model.ContractAddress)
 		wg2.Add(1)
 		go func(token *chainkittokens.Record, initStartBlock uint64) {
 			defer wg2.Done()
@@ -63,6 +72,7 @@ func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
 				"deposit",
 				handleDeposit,
 				service.StartBlock(initStartBlock),
+				service.Step(BlockNum),
 			)
 			if err != nil {
 				log.Error("failed to scan block", "tokenID", token.Model.Id, "error", err)
@@ -73,9 +83,10 @@ func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
 	wg2.Wait()
 }
 
-func handleDeposit(mysqlSession *mysqlx.TxSession, log types.Log, eventLogId uint64, chainDbID uint64) error {
+func handleDeposit(mysqlSession *mysqlx.TxSession, eventLog types.Log, eventLogId uint64, chainDbID uint64) error {
+	log.Debug("handling deposit", "log count", len(eventLog.Data), "chainDbId", chainDbID, "eventLogId", eventLogId)
 	erc20Abi, _ := erc20.NewErc20(common.Address{}, nil)
-	transfer, err := erc20Abi.ParseTransfer(log)
+	transfer, err := erc20Abi.ParseTransfer(eventLog)
 	if err != nil {
 		return nil
 	}
@@ -83,13 +94,17 @@ func handleDeposit(mysqlSession *mysqlx.TxSession, log types.Log, eventLogId uin
 	to := transfer.To.Hex()
 	from := transfer.From.Hex()
 	amount := decimal.NewFromBigInt(transfer.Value, 0)
-	hash := log.TxHash.Hex()
+	hash := eventLog.TxHash.Hex()
+
+	if amount.Equal(decimal.Zero) {
+		return nil
+	}
 
 	userDepAddr := chainkituserdepositaddress.NewRecord().ReadByAddress(to)
 	if !userDepAddr.Exists() {
 		return nil
 	}
-	token := chainkittokens.NewRecord(mysqlSession).ReadByChainAndContractAddress(chainDbID, log.Address.Hex())
+	token := chainkittokens.NewRecord(mysqlSession).ReadByChainAndContractAddress(chainDbID, eventLog.Address.Hex())
 	if !token.Exists() {
 		return nil
 	}
@@ -110,7 +125,11 @@ func handleDeposit(mysqlSession *mysqlx.TxSession, log types.Log, eventLogId uin
 				ReadByChainAndAddressAndToken(chainDbID, userDepAddr.Model.Id, token.Model.Id)
 		}
 	}
-	_ = userDepAddrBalance.Deposit(amount, hash)
+	err = userDepAddrBalance.Deposit(amount, hash)
+	if err != nil {
+		log.Debug("failed to update user deposit address asset balance", "chainDbId", chainDbID, "userDepositAddressId", userDepAddr.Model.Id, "tokenId", token.Model.Id, "amount", amount.String(), "hash", hash, "error", err)
+		return err
+	}
 
 	amountDecimal := amount.Div(decimal.New(1, int32(token.Model.Decimals)))
 
@@ -132,7 +151,11 @@ func handleDeposit(mysqlSession *mysqlx.TxSession, log types.Log, eventLogId uin
 	}
 
 	userAsset := chainkitasset.NewRecord(mysqlSession).GetByUserAndTokenGroup(userDepAddr.Model.UserId, token.Model.TokenGroupId)
-	_ = userAsset.IncreaseBalance(amount, "deposit", depRecord.Model.Id, fmt.Sprintf("deposit_%d", depRecord.Model.Id), "")
+	err = userAsset.IncreaseBalance(amount, "deposit", depRecord.Model.Id, fmt.Sprintf("deposit_%d", depRecord.Model.Id), "")
+	if err != nil {
+		log.Debug("failed to increase user asset balance", "error", err)
+		return err
+	}
 
 	return nil
 }

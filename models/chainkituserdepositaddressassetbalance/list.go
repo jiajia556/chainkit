@@ -20,7 +20,8 @@ func NewList(session ...mysqlx.Session) *List {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainUserDepositAddressAssetBalance))
+		createTableSession := mysqlx.NewTxSession()
+		err := createTableSession.CreateTableIfNotExists(new(ChainUserDepositAddressAssetBalance))
 		if err != nil {
 			panic(err)
 		}
@@ -41,6 +42,6 @@ func NewList(session ...mysqlx.Session) *List {
 
 func (l *List) GetCanTaskByTokenBalance(tokenId uint64, minCollectAmount decimal.Decimal) *List {
 	where := fmt.Sprintf("token_id = %d AND balance_amount >= %s", tokenId, minCollectAmount.String())
-	l.DB().Where(where).Find(l.Records)
+	l.DB().Debug().Where(where).Find(l.Records)
 	return l
 }

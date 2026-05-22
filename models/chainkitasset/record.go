@@ -35,9 +35,9 @@ func NewRecord(session ...mysqlx.Session) *Record {
 	} else {
 		dbSession = mysqlx.NewTxSession()
 	}
-	// Never run DDL while in a transaction (MySQL DDL may cause implicit commit).
-	if mysqlx.AutoCreateTable() && (dbSession == nil || !dbSession.IsInTransaction()) {
-		err := dbSession.CreateTableIfNotExists(new(ChainAsset))
+	if mysqlx.AutoCreateTable() {
+		createTableSession := mysqlx.NewTxSession()
+		err := createTableSession.CreateTableIfNotExists(new(ChainAsset))
 		if err != nil {
 			panic(err)
 		}
@@ -314,7 +314,7 @@ func (r *Record) updateBalanceLocked(availableDelta, frozenDelta decimal.Decimal
 		query += fmt.Sprintf(" AND `frozen` >= CAST(? AS %s)", amountDecimalType)
 		args = append(args, *minFrozen)
 	}
-	m := r.DB().Debug().Exec(query, args...)
+	m := r.DB().Exec(query, args...)
 	if m.Error != nil {
 		return m.Error
 	}

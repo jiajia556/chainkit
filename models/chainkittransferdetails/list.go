@@ -18,7 +18,8 @@ func NewList(ctx ...mysqlx.Session) *List {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainTransferDetails))
+		createTableSession := mysqlx.NewTxSession()
+		err := createTableSession.CreateTableIfNotExists(new(ChainTransferDetails))
 		if err != nil {
 			panic(err)
 		}

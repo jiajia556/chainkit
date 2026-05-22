@@ -17,7 +17,8 @@ func NewList(session ...mysqlx.Session) *List {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainUserDepositAddress))
+		createTableSession := mysqlx.NewTxSession()
+		err := createTableSession.CreateTableIfNotExists(new(ChainUserDepositAddress))
 		if err != nil {
 			panic(err)
 		}

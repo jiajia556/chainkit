@@ -17,7 +17,8 @@ func NewRecord(session ...mysqlx.Session) *Record {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainCollectTokens))
+		createTableSession := mysqlx.NewTxSession()
+		err := createTableSession.CreateTableIfNotExists(new(ChainCollectTokens))
 		if err != nil {
 			panic(err)
 		}

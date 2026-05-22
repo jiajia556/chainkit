@@ -41,8 +41,6 @@ func handleChain(chain *chainkitchains.Record) {
 		return
 	}
 
-	nonce := uint64(0)
-
 	lastSent := chainkitcollectgasfeetasks.NewRecord().GetLastSent(chain.Model.Id)
 	if lastSent.Exists() {
 		status, err := srv.GetTxStatus(lastSent.Model.TxHash)
@@ -50,9 +48,10 @@ func handleChain(chain *chainkitchains.Record) {
 			log.Error("failed to get tx status", "error", err, "tx hash", lastSent.Model.TxHash)
 			return
 		}
+		log.Debug("last sent gas task", "chain db id", chain.Model.Id, "tx hash", lastSent.Model.TxHash, "status", status)
 		switch status {
 		case service.TxStatusNotFound:
-			if lastSent.SinceCreated() > time.Minute*15 {
+			if lastSent.SinceCreated() > time.Minute*1 {
 				occupied, err := srv.IsNonceOccupied(lastSent.Model.FromAddress, lastSent.Model.Nonce)
 				if err != nil {
 					log.Error("failed to check if nonce is occupied", "error", err, "from address", lastSent.Model.FromAddress, "nonce", lastSent.Model.Nonce)
@@ -60,10 +59,10 @@ func handleChain(chain *chainkitchains.Record) {
 				}
 				if occupied {
 					// 特殊情况，人工处理
+					log.Debug("nonce is occupied, set last sent gas task to unknown, need manual handling", "from address", lastSent.Model.FromAddress, "nonce", lastSent.Model.Nonce)
 					lastSent.SetUnknown()
 				} else {
 					lastSent.SetWaiting()
-					nonce = lastSent.Model.Nonce
 				}
 			}
 		case service.TxStatusPending, service.TxStatusMined:
@@ -121,11 +120,11 @@ func handleChain(chain *chainkitchains.Record) {
 		service.GasPrice(gasPrice),
 		service.CheckBalance(false),
 	}
-	if nonce > 0 {
-		opts = append(opts, service.Nonce(nonce))
+	if waiting.Model.Nonce > 0 {
+		opts = append(opts, service.Nonce(waiting.Model.Nonce))
 	}
 
-	hash, nonce, _, err := srv.TransferETH(
+	hash, n, fakeErr, err := srv.TransferETH(
 		waiting.Model.ToAddress,
 		amount,
 		opts...,
@@ -134,5 +133,8 @@ func handleChain(chain *chainkitchains.Record) {
 		log.Error("failed to transfer ETH", "error", err)
 		return
 	}
-	waiting.SetSent(amount, hash, nonce, gasPrice)
+	if fakeErr != nil {
+		log.Error("failed to transfer ETH due to fake error", "error", fakeErr)
+	}
+	waiting.SetSent(amount, hash, n, gasPrice)
 }

@@ -45,7 +45,7 @@ You must choose at least one category flag (e.g. --chains).
 		initCollectConfig, _ := cmd.Flags().GetBool("collect-config")
 		initCollectTokens, _ := cmd.Flags().GetBool("collect-tokens")
 		initDepositTokens, _ := cmd.Flags().GetBool("deposit-tokens")
-		if !initChains && !initTokens && !initContracts && !initCollectConfig && !initCollectTokens && !initDepositTokens {
+		if !initChains && !initTokens && !initTokenGroups && !initContracts && !initCollectConfig && !initCollectTokens && !initDepositTokens {
 			utils.OutputFatal("at least one of the following flags must be set: --chains, --tokens, --contracts, --collect-config, --collect-tokens, --deposit-tokens")
 		}
 		initData(conf, initChains, initTokenGroups, initTokens, initContracts, initCollectConfig, initCollectTokens, initDepositTokens)

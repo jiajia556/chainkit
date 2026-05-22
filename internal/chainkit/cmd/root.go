@@ -3,6 +3,7 @@ package cmd
 import (
 	"github.com/jiajia556/chainkit/internal/chainkit/cmd/create"
 	"github.com/jiajia556/chainkit/internal/chainkit/cmd/gen"
+	_import "github.com/jiajia556/chainkit/internal/chainkit/cmd/import"
 	"github.com/jiajia556/chainkit/internal/chainkit/cmd/initdata"
 	"github.com/spf13/cobra"
 )
@@ -35,5 +36,6 @@ func init() {
 		initdata.GetCommand(),
 		create.GetCommand(),
 		gen.GetCommand(),
+		_import.GetCommand(),
 	)
 }

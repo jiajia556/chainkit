@@ -17,7 +17,8 @@ func NewList(session ...mysqlx.Session) *List {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainCollectTasks))
+		createTableSession := mysqlx.NewTxSession()
+		err := createTableSession.CreateTableIfNotExists(new(ChainCollectTasks))
 		if err != nil {
 			panic(err)
 		}
@@ -47,6 +48,6 @@ func (l *List) GetCanSendList(chainDbId uint64) *List {
 }
 
 func (l *List) GetCentList(chainDbId uint64) *List {
-	l.DB().Where("chain_db_id = ? AND status = 4", chainDbId).Find(l.Records)
+	l.DB().Debug().Where("chain_db_id = ? AND status = 4", chainDbId).Find(l.Records)
 	return l
 }

@@ -17,7 +17,8 @@ func NewList(session ...mysqlx.Session) *List {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainCollectTokens))
+		createTableSession := mysqlx.NewTxSession()
+		err := createTableSession.CreateTableIfNotExists(new(ChainCollectTokens))
 		if err != nil {
 			panic(err)
 		}
@@ -37,6 +38,6 @@ func NewList(session ...mysqlx.Session) *List {
 }
 
 func (l *List) FindAvailableByChainDBID(chainDBID uint64) *List {
-	l.DB().Where("chain_db_id = ?　AND status = 1", chainDBID).Find(l.Records)
+	l.DB().Where("chain_db_id = ? AND status = 1", chainDBID).Find(l.Records)
 	return l
 }

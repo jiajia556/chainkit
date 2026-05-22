@@ -31,7 +31,8 @@ func NewRecord(session ...mysqlx.Session) *Record {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainCollectGasFeeTasks))
+		createTableSession := mysqlx.NewTxSession()
+		err := createTableSession.CreateTableIfNotExists(new(ChainCollectGasFeeTasks))
 		if err != nil {
 			panic(err)
 		}
@@ -60,7 +61,10 @@ func (r *Record) SinceCreated() time.Duration {
 }
 
 func (r *Record) SetWaiting() {
-	r.DB().Model(r.Model).Update("status", StatusWaiting)
+	r.DB().Model(r.Model).Updates(map[string]interface{}{
+		"status":     StatusWaiting,
+		"created_at": time.Now(),
+	})
 }
 
 func (r *Record) SetSending() {

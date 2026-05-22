@@ -23,7 +23,8 @@ func NewRecord(session ...mysqlx.Session) *Record {
 		dbSession = mysqlx.NewTxSession()
 	}
 	if mysqlx.AutoCreateTable() {
-		err := dbSession.CreateTableIfNotExists(new(ChainUserDepositAddressAssetBalance))
+		createTableSession := mysqlx.NewTxSession()
+		err := createTableSession.CreateTableIfNotExists(new(ChainUserDepositAddressAssetBalance))
 		if err != nil {
 			panic(err)
 		}
@@ -48,7 +49,7 @@ func (r *Record) Deposit(amount decimal.Decimal, hash string) error {
 		return fmt.Errorf("failed to get balance from chain, error: %w", err)
 	}
 	sql := fmt.Sprintf(
-		"UPDATE `chain_user_deposit_address_asset_balance` SET `balance_amount` = %s, `last_in_tx_hash` = %s, `confirmed_in_amount` = `confirmed_in_amount` + %s, `updated_at` = %s WHERE `id` = %d;",
+		"UPDATE `chain_user_deposit_address_asset_balance` SET `balance_amount` = %s, `last_in_tx_hash` = '%s', `confirmed_in_amount` = `confirmed_in_amount` + %s, `updated_at` = '%s' WHERE `id` = %d;",
 		chainBalance.String(), hash, amount.String(), time.Now().Format("2006-01-02 15:04:05"), r.Model.Id,
 	)
 	return r.DB().Exec(sql).Error
@@ -77,7 +78,7 @@ func (r *Record) Collected(amount decimal.Decimal, hash string) error {
 		return err
 	}
 	sql := fmt.Sprintf(
-		"UPDATE `chain_user_deposit_address_asset_balance` SET `balance_amount` = %s, `last_collect_tx_hash` = %s, `collected_out_amount` = `collected_out_amount` + %s, `updated_at` = %s WHERE `id` = %d;",
+		"UPDATE `chain_user_deposit_address_asset_balance` SET `balance_amount` = %s, `last_collect_tx_hash` = '%s', `collected_out_amount` = `collected_out_amount` + %s, `updated_at` = '%s' WHERE `id` = %d;",
 		chainBalance.String(),
 		hash,
 		amount.String(),

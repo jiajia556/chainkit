@@ -15,7 +15,11 @@ import (
 
 func main() {
 	var configPath string
-	flag.StringVar(&configPath, "config", "./config.json", "Config json file path")
+	var cycle int
+	var blockNum uint64
+	flag.Uint64Var(&blockNum, "block_num", 0, "Deposit service start block number")
+	flag.IntVar(&cycle, "cycle", 30, "Deposit service cycle time in seconds")
+	flag.StringVar(&configPath, "config", "E:\\work\\gowork\\chainkit\\chainkit_config.json", "Config json file path")
 	flag.Parse()
 	err := config.Load(configPath)
 	if err != nil {
@@ -28,6 +32,7 @@ func main() {
 	}
 
 	logConfig := log.DefaultConfig()
+	//logConfig.Level = log.LevelDebug
 	logConfig.Output = "file"
 	logConfig.File.Path = "deposit.log"
 	err = log.Init(logConfig)
@@ -35,7 +40,9 @@ func main() {
 		panic(err)
 	}
 
-	err = runner.New(30*time.Second, deposit.Start).Run(context.Background())
+	log.Debug("starting deposit service", "123123")
+	deposit.BlockNum = blockNum
+	err = runner.New(time.Duration(cycle)*time.Second, deposit.Start).Run(context.Background())
 	if err != nil {
 		panic(err)
 	}

@@ -14,6 +14,7 @@ import (
 )
 
 func Start(ctx context.Context) {
+	log.Debug("start build collect task")
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error("panic in build collect task", "error", r)
@@ -25,6 +26,7 @@ func Start(ctx context.Context) {
 		log.Error("failed to find chains", "error", err)
 		return
 	}
+	log.Debug("read chains", "count", len(*chains.Records))
 
 	chains.Foreach(func(key int, chain *chainkitchains.Record) bool {
 		collectConf := chainkitcollectconfig.NewRecord().GetByChain(chain.Model.Id)
@@ -33,21 +35,28 @@ func Start(ctx context.Context) {
 			return true
 		}
 
+		log.Debug("read collect config", "chain db id", chain.Model.Id, "config id", collectConf.Model.Id)
+
 		srv, err := service.NewChainService(chain.Model.Id)
 		if err != nil {
 			log.Error("failed to create chain service", "error", err, "chain db id", chain.Model.Id)
 			return true
 		}
+		log.Debug("create chain service", "chain db id", chain.Model.Id)
+
 		gasPrice, err := srv.SuggestGasPrice()
 		if err != nil {
 			log.Error("failed to suggest gas price", "error", err, "chain db id", chain.Model.Id)
 			return true
 		}
+		log.Debug("suggest gas price", "chain db id", chain.Model.Id, "gas price", gasPrice)
 
 		depTokens := chainkitcollecttokens.NewList().FindAvailableByChainDBID(chain.Model.Id)
 		if depTokens.IsEmpty() {
+			log.Debug("no available collect token", "chain db id", chain.Model.Id)
 			return true
 		}
+		log.Debug("read collect tokens", "chain db id", chain.Model.Id, "count", len(*depTokens.Records))
 		depTokens.Foreach(func(key int, depToken *chainkitcollecttokens.Record) bool {
 			handleDepToken(srv, depToken, collectConf, collectConf.Model.DefaultErc20TransferGasLimit, gasPrice)
 			return true

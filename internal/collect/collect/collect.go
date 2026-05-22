@@ -13,7 +13,6 @@ import (
 	"github.com/jiajia556/chainkit/models/chainkituserdepositaddressassetbalance"
 	"github.com/jiajia556/chainkit/service"
 	"github.com/jiajia556/tool-box/log"
-	"github.com/jiajia556/tool-box/runner"
 	"github.com/shopspring/decimal"
 )
 
@@ -27,22 +26,27 @@ func Start(ctx context.Context) {
 		return
 	}
 
+	log.Debug("Start collect: found chains", "chain count", len(*chains.Records))
+
 	chains.Foreach(func(key int, chain *chainkitchains.Record) bool {
+		log.Debug("Start collect: start to handle chain", "chain db id", chain.Model.Id)
 		collectConf := chainkitcollectconfig.NewRecord().GetByChain(chain.Model.Id)
 		if !collectConf.Exists() {
+			log.Debug("failed to read collect config", "chain db id", chain.Model.Id)
 			log.Error("failed to read collect config", "chain db id", chain.Model.Id)
 			return true
 		}
 
 		srv, err := service.NewChainService(chain.Model.Id)
 		if err != nil {
+			log.Debug("failed to create chain service", "error", err, "chain db id", chain.Model.Id)
 			log.Error("failed to create chain service", "error", err, "chain db id", chain.Model.Id)
 			return true
 		}
 		handleWaiting(srv, chain, collectConf)
 		collect(chain)
-		runner.TrackAdd(ctx, 1)
-		go checkCollectStatus(ctx, srv, chain)
+		log.Debug("Start collect: start checking collect status", "chain db id", chain.Model.Id)
+		checkCollectStatus(ctx, srv, chain)
 		return true
 	})
 }
@@ -183,14 +187,14 @@ func collect(chain *chainkitchains.Record) {
 }
 
 func checkCollectStatus(ctx context.Context, srv *service.ChainService, chain *chainkitchains.Record) {
-	defer runner.TrackDone(ctx)
-
 	centList := chainkitcollecttasks.NewList().GetCentList(chain.Model.Id)
+	log.Debug("checkCollectStatus: start checking collect status", "chain db id", chain.Model.Id, "cent list size", len(*centList.Records))
 	centList.Foreach(func(key int, centTask *chainkitcollecttasks.Record) bool {
 		status, err := srv.GetTxStatus(centTask.Model.TxHash)
 		if err != nil {
 			return false
 		}
+		log.Debug("checkCollectStatus: get tx status", "chain db id", chain.Model.Id, "tx hash", centTask.Model.TxHash, "status", status)
 		switch status {
 		case service.TxStatusNotFound:
 			if centTask.SinceCreated() > time.Minute*15 {

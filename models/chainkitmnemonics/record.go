@@ -2,6 +2,7 @@ package chainkitmnemonics
 
 import (
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/jiajia556/chainkit/pkg/mnemonic"
 	"github.com/jiajia556/tool-box/cryptox"
 	"github.com/jiajia556/tool-box/mysqlx"
+	"github.com/tyler-smith/go-bip39"
 )
 
 type Record struct {
@@ -85,6 +87,21 @@ func (r *Record) CreateAndGetNewMnemonic(password, remark string) (string, error
 		return "", err
 	}
 	return words, nil
+}
+
+func (r *Record) ImportMnemonic(words, password, remark string) error {
+	if !bip39.IsMnemonicValid(words) {
+		return errors.New("invalid words")
+	}
+	cipher, err := cryptox.EncryptWithPassword(1, password, []byte(words))
+	if err != nil {
+		return err
+	}
+
+	r.Model.Words = cipher
+	r.Model.Remark = remark
+
+	return r.DB().Create(r.Model).Error
 }
 
 // ================== seed 管理（核心） ==================

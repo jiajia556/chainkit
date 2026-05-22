@@ -7,20 +7,20 @@ import (
 )
 
 type ChainUserDepositAddressAssetBalance struct {
-	Id                   uint64          `gorm:"column:id;primaryKey;unsigned;autoIncrement;notNull" json:"id"`
-	UserId               uint64          `gorm:"column:user_id;unsigned;notNull" json:"user_id"`
-	ChainDbId            uint64          `gorm:"column:chain_db_id;unsigned;notNull" json:"chain_db_id"`
-	TokenId              uint64          `gorm:"column:token_id;unsigned;notNull" json:"token_id"`
-	UserDepositAddressId uint64          `gorm:"column:user_deposit_address_id;unsigned;notNull" json:"user_deposit_address_id"`
+	Id                   uint64          `gorm:"column:id;autoIncrement;notNull;primaryKey;unsigned" json:"id"`
+	UserId               uint64          `gorm:"column:user_id;notNull;unsigned" json:"user_id"`
+	ChainDbId            uint64          `gorm:"column:chain_db_id;notNull;unsigned" json:"chain_db_id"`
+	TokenId              uint64          `gorm:"column:token_id;notNull;unsigned" json:"token_id"`
+	UserDepositAddressId uint64          `gorm:"column:user_deposit_address_id;notNull;unsigned" json:"user_deposit_address_id"`
 	Address              string          `gorm:"column:address;notNull" json:"address"`
-	ConfirmedInAmount    decimal.Decimal `gorm:"column:confirmed_in_amount;notNull;default:0" json:"confirmed_in_amount"`
-	CollectedOutAmount   decimal.Decimal `gorm:"column:collected_out_amount;notNull;default:0" json:"collected_out_amount"`
+	ConfirmedInAmount    decimal.Decimal `gorm:"column:confirmed_in_amount;default:0;notNull" json:"confirmed_in_amount"`
+	CollectedOutAmount   decimal.Decimal `gorm:"column:collected_out_amount;default:0;notNull" json:"collected_out_amount"`
 	ManualOutAmount      decimal.Decimal `gorm:"column:manual_out_amount;default:0;notNull" json:"manual_out_amount"`
-	BalanceAmount        decimal.Decimal `gorm:"column:balance_amount;notNull;default:0" json:"balance_amount"`
+	BalanceAmount        decimal.Decimal `gorm:"column:balance_amount;default:0;notNull" json:"balance_amount"`
 	LastInTxHash         string          `gorm:"column:last_in_tx_hash;default:null" json:"last_in_tx_hash"`
 	LastCollectTxHash    string          `gorm:"column:last_collect_tx_hash;default:null" json:"last_collect_tx_hash"`
-	CreatedAt            time.Time       `gorm:"column:created_at;notNull;default:current_timestamp" json:"created_at"`
-	UpdatedAt            time.Time       `gorm:"column:updated_at;notNull;default:current_timestamp" json:"updated_at"`
+	CreatedAt            time.Time       `gorm:"column:created_at;default:current_timestamp;notNull" json:"created_at"`
+	UpdatedAt            time.Time       `gorm:"column:updated_at;default:current_timestamp;notNull" json:"updated_at"`
 }
 
 func (data *ChainUserDepositAddressAssetBalance) ID() uint64 {
