@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/howeyc/gopass"
 	"github.com/jiajia556/chainkit/internal/collect/buildcollecttask"
@@ -13,6 +14,7 @@ import (
 	"github.com/jiajia556/tool-box/log"
 	_ "github.com/jiajia556/tool-box/log/std"
 	"github.com/jiajia556/tool-box/mysqlx"
+	"github.com/jiajia556/tool-box/runner"
 )
 
 func main() {
@@ -52,12 +54,12 @@ func main() {
 		panic(err)
 	}
 
-	buildcollecttask.Start(context.Background())
+	//buildcollecttask.Start(context.Background())
 	//collect.Start(context.Background())
 	//providegas.Start(context.Background())
 
-	//err = runner.New(30*time.Minute, buildcollecttask.Start, collect.Start, providegas.Start).Run(context.Background())
-	//if err != nil {
-	//	panic(err)
-	//}
+	err = runner.New(30*time.Minute, buildcollecttask.Start, collect.Start, providegas.Start).Run(context.Background())
+	if err != nil {
+		panic(err)
+	}
 }

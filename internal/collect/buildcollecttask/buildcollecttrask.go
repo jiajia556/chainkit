@@ -82,15 +82,19 @@ func handleDepToken(
 	if gasLimit.IsZero() {
 		gasLimit = defaultGasLimit
 	}
+	// 归集任务创建时先按当前 gasPrice 做快照，并预留 20% 浮动，后续是否补 gas 以这个快照判断。
 	gasRequiredAmount := gasPrice.Mul(gasLimit).Mul(decimal.New(12, -1))
 
 	canTaskList.Foreach(func(key int, canTaskBalance *chainkituserdepositaddressassetbalance.Record) bool {
+		// 同一地址同一 token 只允许存在一个进行中的归集任务，避免重复归集同一笔余额。
 		tasking := chainkitcollecttasks.NewRecord().GetTaskingByAddressAndToken(canTaskBalance.Model.UserDepositAddressId, canTaskBalance.Model.TokenId)
 		if tasking.Exists() {
 			return true
 		}
-		if depToken.Model.ToAddress == "" {
-			depToken.Model.ToAddress = collectConf.Model.DefaultCollectToAddress
+		// 空地址使用链级默认归集地址；不要回写 depToken.Model，避免影响同一轮循环里的其它判断。
+		toAddress := depToken.Model.ToAddress
+		if toAddress == "" {
+			toAddress = collectConf.Model.DefaultCollectToAddress
 		}
 		gasBalance, err := srv.BalanceAt(canTaskBalance.Model.Address)
 		if err != nil {
@@ -102,14 +106,16 @@ func handleDepToken(
 		tasking.Model.UserId = canTaskBalance.Model.UserId
 		tasking.Model.UserDepositAddressId = canTaskBalance.Model.UserDepositAddressId
 		tasking.Model.FromAddress = canTaskBalance.Model.Address
-		tasking.Model.ToAddress = depToken.Model.ToAddress
+		tasking.Model.ToAddress = toAddress
 		tasking.Model.PlanAmount = canTaskBalance.Model.BalanceAmount
 		tasking.Model.GasRequiredAmount = gasRequiredAmount
 		tasking.Model.GasBalanceBeforeTx = gasBalance
 		tasking.Model.GasLimit = gasLimit
 		tasking.Model.GasPrice = gasPrice
 		tasking.Model.Status = 0
-		_ = tasking.Create()
+		if err := tasking.Create(); err != nil {
+			log.Error("failed to create collect task", "error", err, "chain db id", depToken.Model.ChainDbId, "user deposit address id", canTaskBalance.Model.UserDepositAddressId, "token id", canTaskBalance.Model.TokenId)
+		}
 		return true
 	})
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"time"
@@ -18,6 +19,40 @@ import (
 	"github.com/jiajia556/chainkit/pkg/contracts/multitransfer"
 	"github.com/shopspring/decimal"
 )
+
+func isTxDefinitelyNotBroadcast(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	definiteRejects := []string{
+		"insufficient funds",
+		"nonce too low",
+		"replacement transaction underpriced",
+		"transaction underpriced",
+		"fee cap less than block base fee",
+		"max fee per gas less than block base fee",
+		"intrinsic gas too low",
+		"exceeds block gas limit",
+		"gas limit reached",
+		"invalid sender",
+		"invalid chain id",
+		"invalid transaction",
+		"negative value",
+		"oversized data",
+		"rlp",
+	}
+	for _, reject := range definiteRejects {
+		if strings.Contains(msg, reject) {
+			return true
+		}
+	}
+	return false
+}
+
+func uncertainBroadcastError(hash string, err error) error {
+	return fmt.Errorf("broadcast result is uncertain, tx hash: %s, error: %w", hash, err)
+}
 
 func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
 	if s == nil || s.rpcClient == nil {
@@ -113,7 +148,10 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 
 	if err := s.rpcClient.SendTransaction(ctx, signedTx); err != nil {
 		hash = signedTx.Hash().Hex()
-		fakeErr = err
+		if isTxDefinitelyNotBroadcast(err) {
+			return "", nonce, nil, err
+		}
+		fakeErr = uncertainBroadcastError(hash, err)
 		return hash, nonce, fakeErr, nil
 	}
 
@@ -187,7 +225,10 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 			return "", 0, nil, err
 		}
 		hash = lastSignedTx.Hash().Hex()
-		fakeErr = err
+		if isTxDefinitelyNotBroadcast(err) {
+			return "", nonce, nil, err
+		}
+		fakeErr = uncertainBroadcastError(hash, err)
 		return hash, nonce, fakeErr, nil
 	}
 
@@ -329,7 +370,10 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 			return "", 0, nil, err
 		}
 		hash = lastSignedTx.Hash().Hex()
-		fakeErr = err
+		if isTxDefinitelyNotBroadcast(err) {
+			return "", nonce, nil, err
+		}
+		fakeErr = uncertainBroadcastError(hash, err)
 		err = nil
 	} else {
 		hash = tx.Hash().Hex()

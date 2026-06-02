@@ -48,6 +48,6 @@ func (l *List) GetCanSendList(chainDbId uint64) *List {
 }
 
 func (l *List) GetCentList(chainDbId uint64) *List {
-	l.DB().Debug().Where("chain_db_id = ? AND status = 4", chainDbId).Find(l.Records)
+	l.DB().Debug().Where("chain_db_id = ? AND status IN (?)", chainDbId, []int{StatusSent, StatusMaybeSent}).Find(l.Records)
 	return l
 }
