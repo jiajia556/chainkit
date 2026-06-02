@@ -23,7 +23,8 @@ const (
 )
 
 type ChainService struct {
-	client            *ethclient.Client
+	rpcClient         *ethclient.Client
+	wsClient          *ethclient.Client
 	chainDbId         uint64
 	chainId           *big.Int
 	fromAddressType   types.ServiceAddressType
@@ -107,7 +108,7 @@ func NewChainService(chainDbId uint64) (*ChainService, error) {
 	}
 
 	return &ChainService{
-		client:            client,
+		rpcClient:         client,
 		chainId:           big.NewInt(int64(chain.Model.ChainId)),
 		chainDbId:         chain.Model.Id,
 		safeConfirmations: chain.Model.SafeConfirmations,
@@ -115,11 +116,11 @@ func NewChainService(chainDbId uint64) (*ChainService, error) {
 }
 
 func (s *ChainService) CloseClient() {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return
 	}
-	s.client.Close()
-	s.client = nil
+	s.rpcClient.Close()
+	s.rpcClient = nil
 }
 
 func (s *ChainService) DialClient() error {
@@ -133,7 +134,7 @@ func (s *ChainService) DialClient() error {
 	if err != nil {
 		return err
 	}
-	s.client = client
+	s.rpcClient = client
 	return nil
 }
 
@@ -192,7 +193,7 @@ func (s *ChainService) SetFromByDepositAddress(fromAddrId uint64, password strin
 }
 
 func (s *ChainService) GetClient() *ethclient.Client {
-	return s.client
+	return s.rpcClient
 }
 
 func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, error) {
@@ -214,7 +215,7 @@ func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, 
 	if opt.nonce != nil {
 		transactOpts.Nonce = opt.nonce
 	} else {
-		nonce, err := s.client.PendingNonceAt(context.Background(), transactOpts.From)
+		nonce, err := s.rpcClient.PendingNonceAt(context.Background(), transactOpts.From)
 		if err != nil {
 			return nil, err
 		}
@@ -228,7 +229,7 @@ func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, 
 	if opt.gasPrice != nil {
 		transactOpts.GasPrice = opt.gasPrice
 	} else if opt.gasTipCap == nil {
-		transactOpts.GasPrice, err = s.client.SuggestGasPrice(context.Background())
+		transactOpts.GasPrice, err = s.rpcClient.SuggestGasPrice(context.Background())
 		if err != nil {
 			return nil, err
 		}
@@ -275,7 +276,7 @@ func (s *ChainService) GetFromETHBalance() (decimal.Decimal, error) {
 	if s.fromAddressType == "" {
 		return decimal.Zero, errors.New("from address not set")
 	}
-	balance, err := s.client.BalanceAt(context.Background(), common.HexToAddress(s.fromAddress), nil)
+	balance, err := s.rpcClient.BalanceAt(context.Background(), common.HexToAddress(s.fromAddress), nil)
 	if err != nil {
 		return decimal.Zero, err
 	}

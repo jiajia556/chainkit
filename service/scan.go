@@ -8,8 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/google/uuid"
-	"github.com/jiajia556/chainkit/models/chainkiteventlogs"
 	"github.com/jiajia556/chainkit/models/chainkitscancursor"
 	"github.com/jiajia556/tool-box/log"
 	"github.com/jiajia556/tool-box/mysqlx"
@@ -52,7 +50,7 @@ var defaultScanOptions = &scanOptions{
 }
 
 type ScanOption func(*scanOptions)
-type LogHandler func(mysqlSession *mysqlx.TxSession, log types.Log, eventLogId uint64, chainDbId uint64) error
+type LogHandler func(ctx *LogContext, log types.Log) error
 
 func SafeConfirmations(confirmations uint64) ScanOption {
 	return func(o *scanOptions) {
@@ -80,7 +78,7 @@ func StartBlock(startBlock uint64) ScanOption {
 
 func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHandler, option ...ScanOption) error {
 	log.Debug("starting scan block", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
-	if s.client == nil {
+	if s.rpcClient == nil {
 		return errors.New("chain service not initialized")
 	}
 	if handler == nil {
@@ -108,16 +106,6 @@ func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHand
 		if err := cursor.Create(); err != nil {
 			return err
 		}
-	} else {
-		lastLogRecord := chainkiteventlogs.NewRecord()
-		if err := lastLogRecord.ReadLastByContractAndChain(contractAddress, module, s.chainDbId); err != nil && err.Error() != "record not found" {
-			return err
-		}
-		if lastLogRecord.Exists() {
-			if lastLogRecord.Model.BlockNumber != cursor.Model.LastestBlock {
-				return errors.New("last eventLog block number is not equal to cursor block number")
-			}
-		}
 	}
 	if cursor.Model.LastestBlock == 0 {
 		return errors.New("start block is not set")
@@ -125,7 +113,7 @@ func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHand
 
 	expectedCursorBlock := cursor.Model.LastestBlock
 
-	header, err := s.client.HeaderByNumber(context.Background(), nil)
+	header, err := s.rpcClient.HeaderByNumber(context.Background(), nil)
 	if err != nil {
 		return err
 	}
@@ -146,7 +134,7 @@ func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHand
 		Addresses: []common.Address{contract},
 	}
 
-	logs, err := s.client.FilterLogs(context.Background(), query)
+	logs, err := s.rpcClient.FilterLogs(context.Background(), query)
 	if err != nil {
 		return err
 	}
@@ -181,50 +169,22 @@ func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHand
 		return rollbackWithErr(errors.New("scan cursor moved; retry scan"))
 	}
 
-	lastLogBlockNumber := uint64(0)
+	logCtx := &LogContext{
+		Session:         session,
+		ChainDbId:       s.chainDbId,
+		ContractAddress: contractAddress,
+		Module:          module,
+	}
 	for _, eventLog := range logs {
 		if len(eventLog.Topics) == 0 {
 			continue
 		}
-		//logRecord := chainkiteventlogs.NewRecord(session)
-		//logRecord.Model.ChainDbId = s.chainDbId
-		//logRecord.Model.ContractAddress = contractAddress
-		//logRecord.Model.Module = module
-		//logRecord.Model.TxHash = eventLog.TxHash.String()
-		//logRecord.Model.LogIndex = uint32(eventLog.Index)
-		//logRecord.Model.BlockNumber = eventLog.BlockNumber
-		//logRecord.Model.BlockHash = eventLog.BlockHash.String()
-		//logRecord.Model.EventSig = eventLog.Topics[0].Bytes()
-		//logRecord.Model.RawData = eventLog.Data
-		//if err := logRecord.Create(); err != nil {
-		//	return rollbackWithErr(err)
-		//}
-
-		if err := handler(session, eventLog, 0, s.chainDbId); err != nil {
+		if err := handler(logCtx, eventLog); err != nil {
 			return rollbackWithErr(err)
 		}
-
-		//lastLogBlockNumber = eventLog.BlockNumber
 	}
 
 	finalCursorBlock := toBlock
-	if toBlock > lastLogBlockNumber {
-		hash := uuid.NewString()
-		logRecord := chainkiteventlogs.NewRecord(session)
-		logRecord.Model.ChainDbId = s.chainDbId
-		logRecord.Model.ContractAddress = contractAddress
-		logRecord.Model.Module = module
-		logRecord.Model.TxHash = hash
-		logRecord.Model.LogIndex = 0
-		logRecord.Model.BlockNumber = toBlock
-		logRecord.Model.BlockHash = ""
-		logRecord.Model.EventSig = []byte{}
-		logRecord.Model.RawData = []byte{}
-		if err := logRecord.Create(); err != nil {
-			return rollbackWithErr(err)
-		}
-	}
-
 	if finalCursorBlock > cursorTx.Model.LastestBlock {
 		if err := cursorTx.UpdateLastestBlock(finalCursorBlock); err != nil {
 			return rollbackWithErr(err)

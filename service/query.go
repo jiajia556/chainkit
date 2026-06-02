@@ -22,7 +22,7 @@ const (
 )
 
 func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return "", errors.New("chain service not initialized")
 	}
 
@@ -32,7 +32,7 @@ func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
 
 	hash := common.HexToHash(txHash)
 
-	tx, isPending, err := s.client.TransactionByHash(context.Background(), hash)
+	tx, isPending, err := s.rpcClient.TransactionByHash(context.Background(), hash)
 	if err != nil {
 		if errors.Is(err, ethereum.NotFound) {
 			return TxStatusNotFound, nil
@@ -48,7 +48,7 @@ func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
 		return TxStatusPending, nil
 	}
 
-	receipt, err := s.client.TransactionReceipt(context.Background(), hash)
+	receipt, err := s.rpcClient.TransactionReceipt(context.Background(), hash)
 	if err != nil {
 		if errors.Is(err, ethereum.NotFound) {
 			return TxStatusPending, nil
@@ -68,7 +68,7 @@ func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
 		return TxStatusConfirmed, nil
 	}
 
-	latest, err := s.client.BlockNumber(context.Background())
+	latest, err := s.rpcClient.BlockNumber(context.Background())
 	if err != nil {
 		return "", err
 	}
@@ -92,13 +92,13 @@ func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
 }
 
 func (s *ChainService) BalanceAt(address string) (decimal.Decimal, error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return decimal.Zero, errors.New("chain service not initialized")
 	}
 	if !common.IsHexAddress(address) {
 		return decimal.Zero, errors.New("invalid address")
 	}
-	balance, err := s.client.BalanceAt(context.Background(), common.HexToAddress(address), nil)
+	balance, err := s.rpcClient.BalanceAt(context.Background(), common.HexToAddress(address), nil)
 	if err != nil {
 		return decimal.Zero, err
 	}
@@ -106,7 +106,7 @@ func (s *ChainService) BalanceAt(address string) (decimal.Decimal, error) {
 }
 
 func (s *ChainService) BalanceOf(tokenAddress string, address string) (decimal.Decimal, error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return decimal.Zero, errors.New("chain service not initialized")
 	}
 	if !common.IsHexAddress(tokenAddress) {
@@ -115,7 +115,7 @@ func (s *ChainService) BalanceOf(tokenAddress string, address string) (decimal.D
 	if !common.IsHexAddress(address) {
 		return decimal.Zero, errors.New("invalid address")
 	}
-	instance, err := erc20.NewErc20(common.HexToAddress(tokenAddress), s.client)
+	instance, err := erc20.NewErc20(common.HexToAddress(tokenAddress), s.rpcClient)
 	if err != nil {
 		return decimal.Zero, err
 	}
@@ -127,13 +127,13 @@ func (s *ChainService) BalanceOf(tokenAddress string, address string) (decimal.D
 }
 
 func (s *ChainService) IsContract(address string) (bool, error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return false, errors.New("chain service not initialized")
 	}
 	if !common.IsHexAddress(address) {
 		return false, errors.New("invalid address")
 	}
-	code, err := s.client.CodeAt(context.Background(), common.HexToAddress(address), nil)
+	code, err := s.rpcClient.CodeAt(context.Background(), common.HexToAddress(address), nil)
 	if err != nil {
 		return false, err
 	}
@@ -141,10 +141,10 @@ func (s *ChainService) IsContract(address string) (bool, error) {
 }
 
 func (s *ChainService) SuggestGasPrice() (decimal.Decimal, error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return decimal.Zero, errors.New("chain service not initialized")
 	}
-	price, err := s.client.SuggestGasPrice(context.Background())
+	price, err := s.rpcClient.SuggestGasPrice(context.Background())
 	if err != nil {
 		return decimal.Zero, err
 	}
@@ -152,7 +152,7 @@ func (s *ChainService) SuggestGasPrice() (decimal.Decimal, error) {
 }
 
 func (s *ChainService) IsNonceOccupied(address string, nonce uint64) (bool, error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return false, errors.New("chain service not initialized")
 	}
 	if !common.IsHexAddress(address) {
@@ -161,7 +161,7 @@ func (s *ChainService) IsNonceOccupied(address string, nonce uint64) (bool, erro
 
 	// pending nonce = 当前地址“下一个可用 nonce”
 	// 若传入 nonce 小于 pending nonce，说明该 nonce 已经被使用（已上链或在 pending 池中）
-	pendingNonce, err := s.client.PendingNonceAt(context.Background(), common.HexToAddress(address))
+	pendingNonce, err := s.rpcClient.PendingNonceAt(context.Background(), common.HexToAddress(address))
 	if err != nil {
 		return false, err
 	}
@@ -170,7 +170,7 @@ func (s *ChainService) IsNonceOccupied(address string, nonce uint64) (bool, erro
 }
 
 func (s *ChainService) GetGasUsedAndEffectiveGasPrice(hash string) (decimal.Decimal, decimal.Decimal, error) {
-	receipt, err := s.client.TransactionReceipt(context.Background(), common.HexToHash(hash))
+	receipt, err := s.rpcClient.TransactionReceipt(context.Background(), common.HexToHash(hash))
 	if err != nil {
 		return decimal.Zero, decimal.Zero, err
 	}

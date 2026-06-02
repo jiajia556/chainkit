@@ -17,7 +17,6 @@ import (
 	"github.com/jiajia556/chainkit/pkg/contracts/erc20"
 	"github.com/jiajia556/chainkit/service"
 	"github.com/jiajia556/tool-box/log"
-	"github.com/jiajia556/tool-box/mysqlx"
 	"github.com/shopspring/decimal"
 )
 
@@ -83,8 +82,8 @@ func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
 	wg2.Wait()
 }
 
-func handleDeposit(mysqlSession *mysqlx.TxSession, eventLog types.Log, eventLogId uint64, chainDbID uint64) error {
-	log.Debug("handling deposit", "log count", len(eventLog.Data), "chainDbId", chainDbID, "eventLogId", eventLogId)
+func handleDeposit(logCtx *service.LogContext, eventLog types.Log) error {
+	log.Debug("handling deposit", "log count", len(eventLog.Data), "chainDbId", logCtx.ChainDbId)
 	erc20Abi, _ := erc20.NewErc20(common.Address{}, nil)
 	transfer, err := erc20Abi.ParseTransfer(eventLog)
 	if err != nil {
@@ -104,15 +103,23 @@ func handleDeposit(mysqlSession *mysqlx.TxSession, eventLog types.Log, eventLogI
 	if !userDepAddr.Exists() {
 		return nil
 	}
-	token := chainkittokens.NewRecord(mysqlSession).ReadByChainAndContractAddress(chainDbID, eventLog.Address.Hex())
+	token := chainkittokens.NewRecord(logCtx.Session).ReadByChainAndContractAddress(logCtx.ChainDbId, eventLog.Address.Hex())
 	if !token.Exists() {
 		return nil
 	}
-	userDepAddrBalance := chainkituserdepositaddressassetbalance.NewRecord(mysqlSession).
-		ReadByChainAndAddressAndToken(chainDbID, userDepAddr.Model.Id, token.Model.Id)
+	eventLogId, created, err := logCtx.SaveEventLog(eventLog)
+	if err != nil {
+		return err
+	}
+	if !created {
+		return nil
+	}
+
+	userDepAddrBalance := chainkituserdepositaddressassetbalance.NewRecord(logCtx.Session).
+		ReadByChainAndAddressAndToken(logCtx.ChainDbId, userDepAddr.Model.Id, token.Model.Id)
 	if !userDepAddrBalance.Exists() {
 		userDepAddrBalance.Model.UserId = userDepAddr.Model.UserId
-		userDepAddrBalance.Model.ChainDbId = chainDbID
+		userDepAddrBalance.Model.ChainDbId = logCtx.ChainDbId
 		userDepAddrBalance.Model.TokenId = token.Model.Id
 		userDepAddrBalance.Model.UserDepositAddressId = userDepAddr.Model.Id
 		userDepAddrBalance.Model.Address = userDepAddr.Model.Address
@@ -121,21 +128,21 @@ func handleDeposit(mysqlSession *mysqlx.TxSession, eventLog types.Log, eventLogI
 		userDepAddrBalance.Model.LastInTxHash = ""
 		err = userDepAddrBalance.Create()
 		if err != nil {
-			userDepAddrBalance = chainkituserdepositaddressassetbalance.NewRecord(mysqlSession).
-				ReadByChainAndAddressAndToken(chainDbID, userDepAddr.Model.Id, token.Model.Id)
+			userDepAddrBalance = chainkituserdepositaddressassetbalance.NewRecord(logCtx.Session).
+				ReadByChainAndAddressAndToken(logCtx.ChainDbId, userDepAddr.Model.Id, token.Model.Id)
 		}
 	}
 	err = userDepAddrBalance.Deposit(amount, hash)
 	if err != nil {
-		log.Debug("failed to update user deposit address asset balance", "chainDbId", chainDbID, "userDepositAddressId", userDepAddr.Model.Id, "tokenId", token.Model.Id, "amount", amount.String(), "hash", hash, "error", err)
+		log.Debug("failed to update user deposit address asset balance", "chainDbId", logCtx.ChainDbId, "userDepositAddressId", userDepAddr.Model.Id, "tokenId", token.Model.Id, "amount", amount.String(), "hash", hash, "error", err)
 		return err
 	}
 
 	amountDecimal := amount.Div(decimal.New(1, int32(token.Model.Decimals)))
 
-	depRecord := chainkitdepositrecord.NewRecord(mysqlSession)
+	depRecord := chainkitdepositrecord.NewRecord(logCtx.Session)
 	depRecord.Model.UserId = userDepAddr.Model.UserId
-	depRecord.Model.ChainDbId = chainDbID
+	depRecord.Model.ChainDbId = logCtx.ChainDbId
 	depRecord.Model.TokenId = token.Model.Id
 	depRecord.Model.EventLogId = eventLogId
 	depRecord.Model.UserDepositAddressId = userDepAddr.Model.Id
@@ -150,7 +157,7 @@ func handleDeposit(mysqlSession *mysqlx.TxSession, eventLog types.Log, eventLogI
 		return nil
 	}
 
-	userAsset := chainkitasset.NewRecord(mysqlSession).GetByUserAndTokenGroup(userDepAddr.Model.UserId, token.Model.TokenGroupId)
+	userAsset := chainkitasset.NewRecord(logCtx.Session).GetByUserAndTokenGroup(userDepAddr.Model.UserId, token.Model.TokenGroupId)
 	err = userAsset.IncreaseBalance(amount, "deposit", depRecord.Model.Id, fmt.Sprintf("deposit_%d", depRecord.Model.Id), "")
 	if err != nil {
 		log.Debug("failed to increase user asset balance", "error", err)

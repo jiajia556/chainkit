@@ -20,7 +20,7 @@ import (
 )
 
 func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
@@ -66,7 +66,7 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 	gasLimit := txOpts.GasLimit
 	if gasLimit == 0 {
 		callMsg := ethereum.CallMsg{From: txOpts.From, To: &toAddr, Value: weiValue}
-		estimated, estErr := s.client.EstimateGas(ctx, callMsg)
+		estimated, estErr := s.rpcClient.EstimateGas(ctx, callMsg)
 		if estErr != nil {
 			gasLimit = 21000
 		} else {
@@ -111,7 +111,7 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 		return "", 0, nil, err
 	}
 
-	if err := s.client.SendTransaction(ctx, signedTx); err != nil {
+	if err := s.rpcClient.SendTransaction(ctx, signedTx); err != nil {
 		hash = signedTx.Hash().Hex()
 		fakeErr = err
 		return hash, nonce, fakeErr, nil
@@ -121,7 +121,7 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 }
 
 func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
@@ -176,7 +176,7 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 		return signedTx, nil
 	}
 
-	instance, err := erc20.NewErc20(tokenAddr, s.client)
+	instance, err := erc20.NewErc20(tokenAddr, s.rpcClient)
 	if err != nil {
 		return "", 0, nil, err
 	}
@@ -195,7 +195,7 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 }
 
 func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
@@ -281,7 +281,7 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	if opt.nonce != nil {
 		auth.Nonce = opt.nonce
 	} else {
-		nonceValue, err := s.client.PendingNonceAt(context.Background(), auth.From)
+		nonceValue, err := s.rpcClient.PendingNonceAt(context.Background(), auth.From)
 		if err != nil {
 			return "", 0, nil, err
 		}
@@ -295,7 +295,7 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	if opt.gasPrice != nil {
 		auth.GasPrice = opt.gasPrice
 	} else {
-		auth.GasPrice, err = s.client.SuggestGasPrice(context.Background())
+		auth.GasPrice, err = s.rpcClient.SuggestGasPrice(context.Background())
 		if err != nil {
 			return "", 0, nil, err
 		}
@@ -316,7 +316,7 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 		return "", 0, nil, err
 	}
 
-	instance, err := multitransfer.NewMultitransfer(common.HexToAddress(multiTransferContract.Model.Address), s.client)
+	instance, err := multitransfer.NewMultitransfer(common.HexToAddress(multiTransferContract.Model.Address), s.rpcClient)
 	if err != nil {
 		return "", 0, nil, err
 	}
@@ -339,7 +339,7 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 }
 
 func (s *ChainService) DBTransfer(count int, opts ...Option) error {
-	if s == nil || s.client == nil || s.priKey == nil {
+	if s == nil || s.rpcClient == nil || s.priKey == nil {
 		return errors.New("transfer service not initialized")
 	}
 

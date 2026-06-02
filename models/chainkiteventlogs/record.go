@@ -36,3 +36,7 @@ func NewRecord(ctx ...mysqlx.Session) *Record {
 func (r *Record) ReadLastByContractAndChain(contractAddress, module string, chainDbId uint64) error {
 	return r.DB().Where("contract_address = ? AND module = ? AND chain_db_id = ?", strings.ToLower(contractAddress), module, chainDbId).Order("id desc").Take(r.Model).Error
 }
+
+func (r *Record) ReadByChainTxHashAndLogIndex(chainDbId uint64, txHash string, logIndex uint32) error {
+	return r.DB().Where("chain_db_id = ? AND tx_hash = ? AND log_index = ?", chainDbId, strings.ToLower(txHash), logIndex).Take(r.Model).Error
+}

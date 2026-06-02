@@ -10,7 +10,7 @@ import (
 )
 
 func (s *ChainService) ApproveERC20(tokenAddress, spenderAddress string, amount decimal.Decimal, opts ...Option) (hash string, fakeErr, err error) {
-	if s == nil || s.client == nil {
+	if s == nil || s.rpcClient == nil {
 		return "", nil, errors.New("chain service not initialized")
 	}
 	if s.fromAddress == "" {
@@ -23,7 +23,7 @@ func (s *ChainService) ApproveERC20(tokenAddress, spenderAddress string, amount 
 		return "", nil, errors.New("invalid address")
 	}
 
-	instance, err := erc20.NewErc20(common.HexToAddress(tokenAddress), s.client)
+	instance, err := erc20.NewErc20(common.HexToAddress(tokenAddress), s.rpcClient)
 	if err != nil {
 		return "", nil, err
 	}
