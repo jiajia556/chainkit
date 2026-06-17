@@ -102,16 +102,16 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 		cursor.Model.ChainDbId = s.chainDbId
 		cursor.Model.ContractAddress = contractAddress
 		cursor.Model.Module = module
-		cursor.Model.LastestBlock = opts.startBlock
+		cursor.Model.LatestBlock = opts.startBlock
 		if err := cursor.Create(); err != nil {
 			return err
 		}
 	}
-	if cursor.Model.LastestBlock == 0 {
+	if cursor.Model.LatestBlock == 0 {
 		return errors.New("start block is not set")
 	}
 
-	expectedCursorBlock := cursor.Model.LastestBlock
+	expectedCursorBlock := cursor.Model.LatestBlock
 
 	header, err := s.rpcClient.HeaderByNumber(context.Background(), nil)
 	if err != nil {
@@ -121,14 +121,14 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 		return errors.New("latest block number is less than or equal to safe confirmations")
 	}
 	netSafeLastestBlock := header.Number.Uint64() - opts.safeConfirmations
-	toBlock := cursor.Model.LastestBlock + opts.step
+	toBlock := cursor.Model.LatestBlock + opts.step
 	if toBlock > netSafeLastestBlock {
 		toBlock = netSafeLastestBlock
 	}
 
 	contract := common.HexToAddress(contractAddress)
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(cursor.Model.LastestBlock + 1)),
+		FromBlock: big.NewInt(int64(cursor.Model.LatestBlock + 1)),
 		ToBlock:   big.NewInt(int64(toBlock)),
 		Topics:    opts.Topics,
 		Addresses: []common.Address{contract},
@@ -165,7 +165,7 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 	if !cursorTx.Exists() {
 		return rollbackWithErr(errors.New("scan cursor not found"))
 	}
-	if cursorTx.Model.LastestBlock != expectedCursorBlock {
+	if cursorTx.Model.LatestBlock != expectedCursorBlock {
 		return rollbackWithErr(errors.New("scan cursor moved; retry scan"))
 	}
 
@@ -186,7 +186,7 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 	}
 
 	finalCursorBlock := toBlock
-	if finalCursorBlock > cursorTx.Model.LastestBlock {
+	if finalCursorBlock > cursorTx.Model.LatestBlock {
 		if err := cursorTx.UpdateLastestBlock(finalCursorBlock); err != nil {
 			return rollbackWithErr(err)
 		}
