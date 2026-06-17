@@ -51,6 +51,7 @@ var defaultScanOptions = &scanOptions{
 
 type ScanOption func(*scanOptions)
 type LogHandler func(ctx *LogContext, log types.Log) error
+type LogContextHandler func(ctx *LogContext) error
 
 func SafeConfirmations(confirmations uint64) ScanOption {
 	return func(o *scanOptions) {
@@ -126,15 +127,61 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 		toBlock = netSafeLastestBlock
 	}
 
+	return s.scanBlockRange(
+		ctx,
+		contractAddress,
+		module,
+		cursor.Model.LastestBlock+1,
+		toBlock,
+		opts.Topics,
+		handler,
+		func(logCtx *LogContext) error {
+			cursorTx := chainkitscancursor.NewRecord(logCtx.Session)
+			if err := cursorTx.ReadByContractAndChain(contractAddress, module, s.chainDbId); err != nil && err.Error() != "record not found" {
+				return err
+			}
+			if !cursorTx.Exists() {
+				return errors.New("scan cursor not found")
+			}
+			if cursorTx.Model.LastestBlock != expectedCursorBlock {
+				return errors.New("scan cursor moved; retry scan")
+			}
+			if toBlock > cursorTx.Model.LastestBlock {
+				return cursorTx.UpdateLastestBlock(toBlock)
+			}
+			return nil
+		},
+	)
+}
+
+func (s *ChainService) ScanBlockRange(ctx context.Context, contractAddress, module string, fromBlock, toBlock uint64, handler LogHandler, afterHandlers ...LogContextHandler) error {
+	return s.scanBlockRange(ctx, contractAddress, module, fromBlock, toBlock, nil, handler, afterHandlers...)
+}
+
+func (s *ChainService) scanBlockRange(ctx context.Context, contractAddress, module string, fromBlock, toBlock uint64, topics [][]common.Hash, handler LogHandler, afterHandlers ...LogContextHandler) error {
+	log.Debug("starting scan block range", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module, "fromBlock", fromBlock, "toBlock", toBlock)
+	if s.rpcClient == nil {
+		return errors.New("chain service not initialized")
+	}
+	if handler == nil {
+		return errors.New("eventLog handler is nil")
+	}
+	if !common.IsHexAddress(contractAddress) {
+		return errors.New("invalid contract address")
+	}
+	if fromBlock > toBlock {
+		return errors.New("from block is greater than to block")
+	}
+
 	contract := common.HexToAddress(contractAddress)
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(cursor.Model.LastestBlock + 1)),
+		FromBlock: big.NewInt(int64(fromBlock)),
 		ToBlock:   big.NewInt(int64(toBlock)),
-		Topics:    opts.Topics,
+		Topics:    topics,
 		Addresses: []common.Address{contract},
 	}
 
-	logs, err := s.rpcClient.FilterLogs(context.Background(), query)
+	logs, err := s.rpcClient.FilterLogs(ctx, query)
 	if err != nil {
 		return err
 	}
@@ -158,17 +205,6 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 		return err
 	}
 
-	cursorTx := chainkitscancursor.NewRecord(session)
-	if err := cursorTx.ReadByContractAndChain(contractAddress, module, s.chainDbId); err != nil && err.Error() != "record not found" {
-		return rollbackWithErr(err)
-	}
-	if !cursorTx.Exists() {
-		return rollbackWithErr(errors.New("scan cursor not found"))
-	}
-	if cursorTx.Model.LastestBlock != expectedCursorBlock {
-		return rollbackWithErr(errors.New("scan cursor moved; retry scan"))
-	}
-
 	logCtx := &LogContext{
 		Ctx:             ctx,
 		Session:         session,
@@ -185,9 +221,11 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 		}
 	}
 
-	finalCursorBlock := toBlock
-	if finalCursorBlock > cursorTx.Model.LastestBlock {
-		if err := cursorTx.UpdateLastestBlock(finalCursorBlock); err != nil {
+	for _, afterHandler := range afterHandlers {
+		if afterHandler == nil {
+			continue
+		}
+		if err := afterHandler(logCtx); err != nil {
 			return rollbackWithErr(err)
 		}
 	}

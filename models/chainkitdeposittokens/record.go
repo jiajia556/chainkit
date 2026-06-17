@@ -31,3 +31,8 @@ func NewRecord(session ...mysqlx.Session) *Record {
 	}
 	return r
 }
+
+func (r *Record) ReadAvailableByChainAndToken(chainDbId, tokenId uint64) *Record {
+	r.DB().Where("chain_db_id = ? AND token_id = ? AND status = 1", chainDbId, tokenId).Take(r.Model)
+	return r
+}
