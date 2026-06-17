@@ -292,8 +292,7 @@ func checkCollectStatus(ctx context.Context, srv *service.ChainService, chain *c
 
 			centTask.SetConfirmed(gasUsed, txFee)
 			// 以链上余额为准刷新资产余额，并累计本次已归集金额，避免仅依赖任务快照。
-			addressBalance := chainkituserdepositaddressassetbalance.NewRecord()
-			err = addressBalance.Read(centTask.Model.UserDepositAddressId)
+			addressBalance := chainkituserdepositaddressassetbalance.NewRecord().ReadByChainAndAddressAndToken(centTask.Model.ChainDbId, centTask.Model.UserDepositAddressId, centTask.Model.TokenId)
 			if err != nil {
 				log.Error("failed to read address balance", "error", err, "address", centTask.Model.UserDepositAddressId)
 				return true

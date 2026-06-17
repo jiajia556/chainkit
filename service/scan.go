@@ -76,7 +76,7 @@ func StartBlock(startBlock uint64) ScanOption {
 	}
 }
 
-func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHandler, option ...ScanOption) error {
+func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module string, handler LogHandler, option ...ScanOption) error {
 	log.Debug("starting scan block", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
 	if s.rpcClient == nil {
 		return errors.New("chain service not initialized")
@@ -170,6 +170,7 @@ func (s *ChainService) ScanBlock(contractAddress, module string, handler LogHand
 	}
 
 	logCtx := &LogContext{
+		Ctx:             ctx,
 		Session:         session,
 		ChainDbId:       s.chainDbId,
 		ContractAddress: contractAddress,

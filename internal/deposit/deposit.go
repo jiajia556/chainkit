@@ -67,6 +67,7 @@ func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
 			defer wg2.Done()
 
 			err := cs.ScanBlock(
+				context.WithValue(context.Background(), "minDepositAmount", depositToken.Model.MinDepositAmount),
 				token.Model.ContractAddress,
 				"deposit",
 				handleDeposit,
@@ -93,6 +94,13 @@ func handleDeposit(logCtx *service.LogContext, eventLog types.Log) error {
 	to := transfer.To.Hex()
 	from := transfer.From.Hex()
 	amount := decimal.NewFromBigInt(transfer.Value, 0)
+	minDepositAmount, ok := logCtx.Ctx.Value("minDepositAmount").(decimal.Decimal)
+	if !ok {
+		minDepositAmount = decimal.Zero
+	}
+	if amount.LessThan(minDepositAmount) {
+		return nil
+	}
 	hash := eventLog.TxHash.Hex()
 
 	if amount.Equal(decimal.Zero) {

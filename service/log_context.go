@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 )
 
 type LogContext struct {
+	Ctx             context.Context
 	Session         mysqlx.Session
 	ChainDbId       uint64
 	ContractAddress string

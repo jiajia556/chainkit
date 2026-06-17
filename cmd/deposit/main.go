@@ -32,9 +32,6 @@ func main() {
 	}
 
 	logConfig := log.DefaultConfig()
-	//logConfig.Level = log.LevelDebug
-	logConfig.Output = "file"
-	logConfig.File.Path = "deposit.log"
 	err = log.Init(logConfig)
 	if err != nil {
 		panic(err)
