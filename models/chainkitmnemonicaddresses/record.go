@@ -53,6 +53,10 @@ func (r *Record) GetPriKey(password string) (*ecdsa.PrivateKey, error) {
 	return session.GetPrivateKey(r.Model.Index)
 }
 
+func (r *Record) GetAddress() string {
+	return r.Model.Address
+}
+
 func (r *Record) GetPriKeyString(password string) (string, error) {
 
 	mn := chainkitmnemonics.NewRecord(r.Session)

@@ -415,6 +415,13 @@ func (s *ChainService) DBTransfer(count int, opts ...Option) error {
 		if status == TxStatusPending {
 			return nil
 		}
+		if status == TxStatusUnknown {
+			if pending.SinceCreated() > time.Minute*15 {
+				pending.SetUnknown()
+				chainkittransferdetails.NewRecord().SetUnknownByTransferRecordId(pending.Model.Id)
+			}
+			return nil
+		}
 		if status == TxStatusConfirmed {
 			pending.SetSuccess()
 			chainkittransferdetails.NewRecord().SetSuccessByTransferRecordId(pending.Model.Id)

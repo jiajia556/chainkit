@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
 	"sync"
 	"time"
 
@@ -25,7 +26,7 @@ func main() {
 	flag.IntVar(&cycle, "cycle", 30, "Deposit service cycle time in seconds")
 	flag.IntVar(&backfillLimit, "backfill_limit", 10, "Backfill task count per cycle")
 	flag.Uint64Var(&backfillStep, "backfill_step", 1000, "Backfill block step per RPC query")
-	flag.StringVar(&configPath, "config", "E:\\work\\gowork\\chainkit\\chainkit_config.json", "Config json file path")
+	flag.StringVar(&configPath, "config", defaultConfigPath(), "Config json file path")
 	flag.Parse()
 	err := config.Load(configPath)
 	if err != nil {
@@ -62,4 +63,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func defaultConfigPath() string {
+	if path := os.Getenv("CHAINKIT_CONFIG"); path != "" {
+		return path
+	}
+	return "./config.json"
 }

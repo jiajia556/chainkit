@@ -34,6 +34,11 @@ type ChainService struct {
 	safeConfirmations uint64
 }
 
+type privateKeyAddressRecord interface {
+	GetPriKey(password string) (*ecdsa.PrivateKey, error)
+	GetAddress() string
+}
+
 type transactionOptions struct {
 	nonce          *big.Int
 	value          *big.Int
@@ -144,23 +149,15 @@ func (s *ChainService) SetFromByMnemonicAddress(fromAddrId uint64, password stri
 	if err != nil {
 		return err
 	}
-	priKey, err := address.GetPriKey(password)
+	priKey, fromAddress, err := privateKeyFromAddressRecord(address, password)
 	if err != nil {
 		return err
-	}
-	if !common.IsHexAddress(address.Model.Address) {
-		return errors.New("invalid stored from address")
-	}
-	derivedAddr := crypto.PubkeyToAddress(priKey.PublicKey)
-	storedAddr := common.HexToAddress(address.Model.Address)
-	if derivedAddr != storedAddr {
-		return errors.New("private key does not match stored address")
 	}
 
 	s.priKey = priKey
 	s.fromAddressType = Mnemonic
 	s.fromAddressId = address.Model.Id
-	s.fromAddress = address.Model.Address
+	s.fromAddress = fromAddress
 
 	return nil
 }
@@ -171,25 +168,34 @@ func (s *ChainService) SetFromByDepositAddress(fromAddrId uint64, password strin
 	if err != nil {
 		return err
 	}
-	priKey, err := address.GetPriKey(password)
+	priKey, fromAddress, err := privateKeyFromAddressRecord(address, password)
 	if err != nil {
 		return err
-	}
-	if !common.IsHexAddress(address.Model.Address) {
-		return errors.New("invalid stored from address")
-	}
-	derivedAddr := crypto.PubkeyToAddress(priKey.PublicKey)
-	storedAddr := common.HexToAddress(address.Model.Address)
-	if derivedAddr != storedAddr {
-		return errors.New("private key does not match stored address")
 	}
 
 	s.priKey = priKey
 	s.fromAddressType = UserDeposit
 	s.fromAddressId = address.Model.Id
-	s.fromAddress = address.Model.Address
+	s.fromAddress = fromAddress
 
 	return nil
+}
+
+func privateKeyFromAddressRecord(record privateKeyAddressRecord, password string) (*ecdsa.PrivateKey, string, error) {
+	priKey, err := record.GetPriKey(password)
+	if err != nil {
+		return nil, "", err
+	}
+	fromAddress := record.GetAddress()
+	if !common.IsHexAddress(fromAddress) {
+		return nil, "", errors.New("invalid stored from address")
+	}
+	derivedAddr := crypto.PubkeyToAddress(priKey.PublicKey)
+	storedAddr := common.HexToAddress(fromAddress)
+	if derivedAddr != storedAddr {
+		return nil, "", errors.New("private key does not match stored address")
+	}
+	return priKey, fromAddress, nil
 }
 
 func (s *ChainService) GetClient() *ethclient.Client {

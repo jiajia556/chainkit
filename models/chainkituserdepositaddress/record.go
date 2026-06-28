@@ -82,6 +82,10 @@ func (r *Record) GetPriKey(password string) (*ecdsa.PrivateKey, error) {
 	return crypto.ToECDSA(priKeyBytes)
 }
 
+func (r *Record) GetAddress() string {
+	return r.Model.Address
+}
+
 func (r *Record) GetByUserId(userId uint64) (res *Record, err error) {
 	ctx := context.Background()
 	key := fmt.Sprintf("GetByUserId:%d", userId)

@@ -69,6 +69,12 @@ func handleChain(chain *chainkitchains.Record) {
 			}
 		case service.TxStatusPending, service.TxStatusMined:
 			return
+		case service.TxStatusUnknown:
+			if lastSent.SinceSent() > time.Minute*10 {
+				log.Debug("tx status unknown, set last sent gas task to unknown", "from address", lastSent.Model.FromAddress, "nonce", lastSent.Model.Nonce, "tx hash", lastSent.Model.TxHash)
+				lastSent.SetUnknown()
+			}
+			return
 		case service.TxStatusFailed:
 			// gas 交易链上失败后，对应归集任务回到 Waiting，下一轮重新计算是否需要补 gas。
 			lastSent.SetFailed()

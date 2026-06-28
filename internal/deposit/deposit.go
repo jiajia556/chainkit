@@ -52,6 +52,7 @@ func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
 		log.Error("failed to create chain service", "chainDbId", chain.Model.Id, "error", err)
 		return
 	}
+	defer cs.CloseClient()
 
 	wg2 := &sync.WaitGroup{}
 	depositTokens.Foreach(func(key int, depositToken *chainkitdeposittokens.Record) bool {
@@ -69,8 +70,8 @@ func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
 			err := cs.ScanBlock(
 				context.WithValue(context.Background(), "minDepositAmount", depositToken.Model.MinDepositAmount),
 				token.Model.ContractAddress,
-				"deposit",
-				handleDeposit,
+				service.ModuleDeposit,
+				HandleDeposit,
 				service.StartBlock(initStartBlock),
 				service.Step(BlockNum),
 			)
@@ -83,11 +84,12 @@ func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
 	wg2.Wait()
 }
 
-func handleDeposit(logCtx *service.LogContext, eventLog types.Log) error {
+func HandleDeposit(logCtx *service.LogContext, eventLog types.Log) error {
 	log.Debug("handling deposit", "log count", len(eventLog.Data), "chainDbId", logCtx.ChainDbId)
 	erc20Abi, _ := erc20.NewErc20(common.Address{}, nil)
 	transfer, err := erc20Abi.ParseTransfer(eventLog)
 	if err != nil {
+		log.Debug("failed to parse transfer event", "chainDbId", logCtx.ChainDbId, "contractAddress", eventLog.Address.Hex(), "txHash", eventLog.TxHash.Hex(), "error", err)
 		return nil
 	}
 
@@ -138,6 +140,9 @@ func handleDeposit(logCtx *service.LogContext, eventLog types.Log) error {
 		if err != nil {
 			userDepAddrBalance = chainkituserdepositaddressassetbalance.NewRecord(logCtx.Session).
 				ReadByChainAndAddressAndToken(logCtx.ChainDbId, userDepAddr.Model.Id, token.Model.Id)
+			if !userDepAddrBalance.Exists() {
+				return err
+			}
 		}
 	}
 	err = userDepAddrBalance.Deposit(amount, hash)
@@ -159,7 +164,10 @@ func handleDeposit(logCtx *service.LogContext, eventLog types.Log) error {
 	depRecord.Model.Amount = amount
 	depRecord.Model.AmountDecimal = amountDecimal
 	depRecord.Model.Remark = hash
-	_ = depRecord.Create()
+	if err := depRecord.Create(); err != nil {
+		log.Debug("failed to create deposit record", "chainDbId", logCtx.ChainDbId, "userDepositAddressId", userDepAddr.Model.Id, "tokenId", token.Model.Id, "amount", amount.String(), "hash", hash, "error", err)
+		return err
+	}
 
 	if userDepAddr.Model.UserId == 0 {
 		return nil

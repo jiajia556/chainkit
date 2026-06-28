@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/jiajia556/chainkit/pkg/contracts/erc20"
+	"github.com/jiajia556/tool-box/log"
 	"github.com/shopspring/decimal"
 )
 
@@ -19,6 +20,7 @@ const (
 	TxStatusMined     TxStatus = "mined"
 	TxStatusConfirmed TxStatus = "confirmed"
 	TxStatusFailed    TxStatus = "failed"
+	TxStatusUnknown   TxStatus = "unknown"
 )
 
 func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
@@ -51,13 +53,15 @@ func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
 	receipt, err := s.rpcClient.TransactionReceipt(context.Background(), hash)
 	if err != nil {
 		if errors.Is(err, ethereum.NotFound) {
-			return TxStatusPending, nil
+			log.Debug("transaction found but receipt not found", "chainDbId", s.chainDbId, "txHash", txHash)
+			return TxStatusUnknown, nil
 		}
 		return "", err
 	}
 
 	if receipt == nil {
-		return TxStatusPending, nil
+		log.Debug("transaction found but receipt is nil", "chainDbId", s.chainDbId, "txHash", txHash)
+		return TxStatusUnknown, nil
 	}
 
 	if receipt.Status != types.ReceiptStatusSuccessful {

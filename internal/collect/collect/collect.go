@@ -279,6 +279,12 @@ func checkCollectStatus(ctx context.Context, srv *service.ChainService, chain *c
 			}
 		case service.TxStatusPending, service.TxStatusMined:
 			return true
+		case service.TxStatusUnknown:
+			if centTask.SinceSent() > time.Minute*10 {
+				log.Debug("checkCollectStatus: tx status unknown, set collect task to unknown", "from address", centTask.Model.FromAddress, "nonce", centTask.Model.Nonce, "tx hash", centTask.Model.TxHash)
+				centTask.SetUnknown()
+			}
+			return true
 		case service.TxStatusFailed:
 			centTask.SetFailed()
 		case service.TxStatusConfirmed:

@@ -5,6 +5,7 @@ import (
 
 	"github.com/jiajia556/chainkit/models"
 	"github.com/jiajia556/tool-box/mysqlx"
+	"gorm.io/gorm/clause"
 )
 
 type Record struct {
@@ -35,6 +36,13 @@ func NewRecord(ctx ...mysqlx.Session) *Record {
 
 func (r *Record) ReadByContractAndChain(contractAddress, module string, chainDbId uint64) error {
 	return r.DB().Where("contract_address = ? AND module = ? AND chain_db_id = ?", strings.ToLower(contractAddress), module, chainDbId).Take(r.Model).Error
+}
+
+func (r *Record) ReadByContractAndChainForUpdate(contractAddress, module string, chainDbId uint64) error {
+	return r.DB().
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("contract_address = ? AND module = ? AND chain_db_id = ?", strings.ToLower(contractAddress), module, chainDbId).
+		Take(r.Model).Error
 }
 
 func (r *Record) UpdateLastestBlock(lastestBlock uint64) error {
