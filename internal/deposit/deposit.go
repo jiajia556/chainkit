@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/jiajia556/chainkit/models/chainkitasset"
 	"github.com/jiajia556/chainkit/models/chainkitchains"
+	"github.com/jiajia556/chainkit/models/chainkitdepositeventinbox"
 	"github.com/jiajia556/chainkit/models/chainkitdepositrecord"
 	"github.com/jiajia556/chainkit/models/chainkitdeposittokens"
 	"github.com/jiajia556/chainkit/models/chainkittokens"
@@ -20,7 +22,10 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-var BlockNum uint64
+var (
+	BlockNum      uint64
+	CatchUpBudget = 20 * time.Second
+)
 
 func Start(ctx context.Context) {
 	log.Debug("deposit service started")
@@ -34,18 +39,22 @@ func Start(ctx context.Context) {
 	wg := &sync.WaitGroup{}
 	chains.Foreach(func(key int, chain *chainkitchains.Record) bool {
 		wg.Add(1)
-		go handleChain(chain, wg)
+		go handleChain(ctx, chain, wg)
 		return true
 	})
 	wg.Wait()
 }
 
-func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
+func handleChain(ctx context.Context, chain *chainkitchains.Record, wg *sync.WaitGroup) {
 	log.Debug("handling chain")
 	defer wg.Done()
 	depositTokens := chainkitdeposittokens.NewList().FindAvailableByChainDBID(chain.Model.Id)
 
 	log.Debug("found deposit tokens", "chainDbId", chain.Model.Id, "count", len(*depositTokens.Records))
+	if depositTokens.IsEmpty() {
+		log.Debug("skipping chain without enabled deposit tokens", "chainDbId", chain.Model.Id)
+		return
+	}
 
 	cs, err := service.NewChainService(chain.Model.Id)
 	if err != nil {
@@ -64,21 +73,23 @@ func handleChain(chain *chainkitchains.Record, wg *sync.WaitGroup) {
 		}
 		log.Debug("scanning deposit token", "chainDbId", chain.Model.Id, "tokenId", token.Model.Id, "contractAddress", token.Model.ContractAddress)
 		wg2.Add(1)
-		go func(token *chainkittokens.Record, initStartBlock uint64) {
+		go func(token *chainkittokens.Record, initStartBlock uint64, minDepositAmount decimal.Decimal) {
 			defer wg2.Done()
 
 			err := cs.ScanBlock(
-				context.WithValue(context.Background(), "minDepositAmount", depositToken.Model.MinDepositAmount),
+				WithInboxSource(WithMinDepositAmount(ctx, minDepositAmount), chainkitdepositeventinbox.SourceGetLogs),
 				token.Model.ContractAddress,
 				service.ModuleDeposit,
-				HandleDeposit,
+				EnqueueDeposit,
 				service.StartBlock(initStartBlock),
 				service.Step(BlockNum),
+				service.Topics([][]common.Hash{{transferEventSignature}}),
+				service.ScanBudget(CatchUpBudget),
 			)
 			if err != nil {
 				log.Error("failed to scan block", "tokenID", token.Model.Id, "error", err)
 			}
-		}(token, depositToken.Model.InitStartBlock)
+		}(token, depositToken.Model.InitStartBlock, depositToken.Model.MinDepositAmount)
 		return true
 	})
 	wg2.Wait()
@@ -96,10 +107,7 @@ func HandleDeposit(logCtx *service.LogContext, eventLog types.Log) error {
 	to := transfer.To.Hex()
 	from := transfer.From.Hex()
 	amount := decimal.NewFromBigInt(transfer.Value, 0)
-	minDepositAmount, ok := logCtx.Ctx.Value("minDepositAmount").(decimal.Decimal)
-	if !ok {
-		minDepositAmount = decimal.Zero
-	}
+	minDepositAmount := minDepositAmountFromContext(logCtx.Ctx)
 	if amount.LessThan(minDepositAmount) {
 		return nil
 	}

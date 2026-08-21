@@ -41,3 +41,12 @@ func (l *List) FindAvailableByChainDBID(chainDBID uint64) *List {
 	l.DB().Where("chain_db_id = ? AND status = 1", chainDBID).Find(l.Records)
 	return l
 }
+
+func (l *List) HasAvailableByChainDBID(chainDBID uint64) (bool, error) {
+	var count int64
+	err := l.DB().Model(&ChainDepositTokens{}).
+		Where("chain_db_id = ? AND status = 1", chainDBID).
+		Limit(1).
+		Count(&count).Error
+	return count > 0, err
+}

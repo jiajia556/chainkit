@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -26,11 +25,11 @@ func (s *ChainService) ApproveERC20(tokenAddress, spenderAddress string, amount 
 
 	instance, err := erc20.NewErc20(common.HexToAddress(tokenAddress), s.rpcClient)
 	if err != nil {
-		return "", nil, fmt.Errorf("ApproveERC20: new erc20 %s: %w", tokenAddress, err)
+		return "", nil, err
 	}
 	txOpts, err := s.GetBindTransactOpts(opts...)
 	if err != nil {
-		return "", nil, fmt.Errorf("ApproveERC20: get transact opts: %w", err)
+		return "", nil, err
 	}
 
 	var lastSignedTx *types.Transaction

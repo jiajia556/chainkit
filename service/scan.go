@@ -5,6 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -19,6 +23,7 @@ type scanOptions struct {
 	safeConfirmations uint64
 	step              uint64
 	startBlock        uint64
+	budget            time.Duration
 	Topics            [][]common.Hash
 }
 
@@ -49,13 +54,31 @@ func (o *scanOptions) Clone() scanOptions {
 var defaultScanOptions = &scanOptions{
 	safeConfirmations: 20,
 	step:              1000,
+	budget:            20 * time.Second,
 }
+
+var suggestedBlockRangePattern = regexp.MustCompile(`(?i)\[\s*(0x[0-9a-f]+)\s*,\s*(0x[0-9a-f]+)\s*\]`)
 
 const ModuleDeposit = "deposit"
 
 type ScanOption func(*scanOptions)
 type LogHandler func(ctx *LogContext, log types.Log) error
 type LogContextHandler func(ctx *LogContext) error
+
+// HandleLog runs one log through the same transaction boundary used by block
+// scanning. It is used by durable queues that process previously collected logs.
+func (s *ChainService) HandleLog(ctx context.Context, contractAddress, module string, handler LogHandler, eventLog types.Log) error {
+	if s == nil || s.rpcClient == nil {
+		return errors.New("chain service not initialized")
+	}
+	if handler == nil {
+		return errors.New("eventLog handler is nil")
+	}
+	if !common.IsHexAddress(contractAddress) {
+		return errors.New("invalid contract address")
+	}
+	return s.handleLogInTx(ctx, contractAddress, module, handler, eventLog)
+}
 
 func SafeConfirmations(confirmations uint64) ScanOption {
 	return func(o *scanOptions) {
@@ -65,7 +88,9 @@ func SafeConfirmations(confirmations uint64) ScanOption {
 
 func Step(step uint64) ScanOption {
 	return func(o *scanOptions) {
-		o.step = step
+		if step > 0 {
+			o.step = step
+		}
 	}
 }
 
@@ -81,36 +106,94 @@ func StartBlock(startBlock uint64) ScanOption {
 	}
 }
 
+// ScanBudget limits how long one ScanBlock call keeps catching up. A zero
+// budget disables the limit and scans until the safe chain head is reached.
+func ScanBudget(budget time.Duration) ScanOption {
+	return func(o *scanOptions) {
+		o.budget = budget
+	}
+}
+
 func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module string, handler LogHandler, option ...ScanOption) error {
-	log.Debug("starting scan block", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
+	//log.Debug("starting scan block", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
 	if s.rpcClient == nil {
-		return errors.New("ScanBlock: chain service not initialized")
+		return errors.New("chain service not initialized")
 	}
 	if handler == nil {
-		return errors.New("ScanBlock: eventLog handler is nil")
+		return errors.New("eventLog handler is nil")
 	}
 	if !common.IsHexAddress(contractAddress) {
-		return errors.New("ScanBlock: invalid contract address")
+		return errors.New("invalid contract address")
 	}
 
 	opts := defaultScanOptions.Clone()
+	if s.safeConfirmations > 0 {
+		opts.safeConfirmations = s.safeConfirmations
+	}
 	for _, apply := range option {
 		apply(&opts)
 	}
+	if opts.step == 0 {
+		return errors.New("scan step must be greater than zero")
+	}
 
-	log.Debug("retrieved header", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
-	header, err := s.rpcClient.HeaderByNumber(context.Background(), nil)
+	startedAt := time.Now()
+	currentStep := opts.step
+	for {
+		advanced, caughtUp, err := s.scanBlockOnce(ctx, contractAddress, module, handler, &opts, currentStep)
+		if err != nil {
+			if currentStep > 1 && isFilterLogsRangeLimit(err) {
+				previousStep := currentStep
+				providerSuggested := false
+				if suggestedStep, ok := suggestedFilterLogsStep(err); ok && suggestedStep < currentStep {
+					currentStep = suggestedStep
+					providerSuggested = true
+				} else {
+					currentStep /= 2
+					if currentStep == 0 {
+						currentStep = 1
+					}
+				}
+				log.Info("reducing getLogs block range", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "previousStep", previousStep, "nextStep", currentStep, "providerSuggested", providerSuggested, "error", err)
+				continue
+			}
+			return err
+		}
+		if caughtUp || !advanced {
+			return nil
+		}
+		if currentStep < opts.step {
+			currentStep *= 2
+			if currentStep > opts.step {
+				currentStep = opts.step
+			}
+		}
+		if opts.budget > 0 && time.Since(startedAt) >= opts.budget {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+	}
+}
+
+func (s *ChainService) scanBlockOnce(ctx context.Context, contractAddress, module string, handler LogHandler, opts *scanOptions, step uint64) (bool, bool, error) {
+
+	//log.Debug("retrieved header", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
+	header, err := s.rpcClient.HeaderByNumber(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("ScanBlock: header by number: %w", err)
+		return false, false, err
 	}
 	if header.Number.Uint64() <= opts.safeConfirmations {
-		return errors.New("ScanBlock: latest block number is less than or equal to safe confirmations")
+		return false, true, nil
 	}
 	netSafeLastestBlock := header.Number.Uint64() - opts.safeConfirmations
 
 	session := mysqlx.NewTxSession()
 	if err := session.Begin(); err != nil {
-		return fmt.Errorf("ScanBlock: begin session: %w", err)
+		return false, false, err
 	}
 	defer func() {
 		e := recover()
@@ -120,7 +203,7 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 		}
 	}()
 
-	log.Debug("rolling back transaction", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
+	//log.Debug("rolling back transaction", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
 	rollbackWithErr := func(err error) error {
 		if rbErr := session.Rollback(); rbErr != nil {
 			return errors.New(err.Error() + "; rollback failed: " + rbErr.Error())
@@ -128,10 +211,10 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 		return err
 	}
 
-	log.Debug("reading cursor", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
+	//log.Debug("reading cursor", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
 	cursor := chainkitscancursor.NewRecord(session)
 	if err := cursor.ReadByContractAndChainForUpdate(contractAddress, module, s.chainDbId); err != nil && err.Error() != "record not found" {
-		return rollbackWithErr(fmt.Errorf("ScanBlock: read cursor: %w", err))
+		return false, false, rollbackWithErr(err)
 	}
 	if !cursor.Exists() {
 		cursor.Model.ChainDbId = s.chainDbId
@@ -139,37 +222,43 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 		cursor.Model.Module = module
 		cursor.Model.LastestBlock = opts.startBlock
 		if err := cursor.Create(); err != nil {
-			return rollbackWithErr(fmt.Errorf("ScanBlock: create cursor: %w", err))
+			return false, false, rollbackWithErr(err)
 		}
 	}
 	if cursor.Model.LastestBlock == 0 {
-		return rollbackWithErr(errors.New("ScanBlock: start block is not set"))
+		return false, false, rollbackWithErr(errors.New("start block is not set"))
 	}
 
-	log.Debug("to block", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
-	toBlock := cursor.Model.LastestBlock + 1 + opts.step
+	//log.Debug("to block", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
+	fromBlock := cursor.Model.LastestBlock + 1
+	toBlock := fromBlock + step - 1
+	if toBlock < fromBlock { // uint64 overflow
+		toBlock = netSafeLastestBlock
+	}
 	if toBlock > netSafeLastestBlock {
 		toBlock = netSafeLastestBlock
 	}
-	fromBlock := cursor.Model.LastestBlock + 1
 
-	log.Debug("block", "fromBlock", fromBlock, "toBlock", toBlock)
+	//log.Debug("block", "fromBlock", fromBlock, "toBlock", toBlock)
 	if fromBlock > toBlock {
-		return session.Commit()
+		return false, true, session.Commit()
 	}
 
-	log.Debug("scanning block range", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module, "fromBlock", fromBlock, "toBlock", toBlock)
+	//log.Debug("scanning block range", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module, "fromBlock", fromBlock, "toBlock", toBlock)
 	if err := s.scanBlockRangeLogs(ctx, contractAddress, module, fromBlock, toBlock, opts.Topics, handler); err != nil {
-		return rollbackWithErr(fmt.Errorf("ScanBlock: scan block range logs: %w", err))
+		return false, false, rollbackWithErr(err)
 	}
 
 	if toBlock > cursor.Model.LastestBlock {
 		if err := cursor.UpdateLastestBlock(toBlock); err != nil {
-			return rollbackWithErr(fmt.Errorf("ScanBlock: update cursor lastest block: %w", err))
+			return false, false, rollbackWithErr(err)
 		}
 	}
 
-	return session.Commit()
+	if err := session.Commit(); err != nil {
+		return false, false, err
+	}
+	return true, toBlock >= netSafeLastestBlock, nil
 }
 
 func (s *ChainService) ScanBlockRange(ctx context.Context, contractAddress, module string, fromBlock, toBlock uint64, handler LogHandler, afterHandlers ...LogContextHandler) error {
@@ -177,7 +266,7 @@ func (s *ChainService) ScanBlockRange(ctx context.Context, contractAddress, modu
 }
 
 func (s *ChainService) scanBlockRange(ctx context.Context, contractAddress, module string, fromBlock, toBlock uint64, topics [][]common.Hash, handler LogHandler, afterHandlers ...LogContextHandler) error {
-	log.Debug("starting scan block range", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module, "fromBlock", fromBlock, "toBlock", toBlock)
+	//log.Debug("starting scan block range", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module, "fromBlock", fromBlock, "toBlock", toBlock)
 	if s.rpcClient == nil {
 		return errors.New("chain service not initialized")
 	}
@@ -192,7 +281,7 @@ func (s *ChainService) scanBlockRange(ctx context.Context, contractAddress, modu
 	}
 
 	if err := s.scanBlockRangeLogs(ctx, contractAddress, module, fromBlock, toBlock, topics, handler); err != nil {
-		return fmt.Errorf("scanBlockRange: %w", err)
+		return err
 	}
 
 	if len(afterHandlers) == 0 {
@@ -223,7 +312,7 @@ func (s *ChainService) scanBlockRangeLogs(ctx context.Context, contractAddress, 
 
 	logs, err := s.rpcClient.FilterLogs(ctx, query)
 	if err != nil {
-		return fmt.Errorf("scanBlockRangeLogs: filter logs: %w", err)
+		return &filterLogsQueryError{fromBlock: fromBlock, toBlock: toBlock, err: err}
 	}
 
 	for _, eventLog := range logs {
@@ -232,10 +321,72 @@ func (s *ChainService) scanBlockRangeLogs(ctx context.Context, contractAddress, 
 		}
 		if err := s.handleLogInTx(ctx, contractAddress, module, handler, eventLog); err != nil {
 			log.Error("failed to handle event log", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module, "txHash", eventLog.TxHash.Hex(), "logIndex", eventLog.Index, "blockNumber", eventLog.BlockNumber, "error", err)
+			return err
 		}
 	}
 
 	return nil
+}
+
+type filterLogsQueryError struct {
+	fromBlock uint64
+	toBlock   uint64
+	err       error
+}
+
+func (e *filterLogsQueryError) Error() string {
+	return fmt.Sprintf("eth_getLogs failed for blocks [%d,%d]: %v", e.fromBlock, e.toBlock, e.err)
+}
+
+func (e *filterLogsQueryError) Unwrap() error {
+	return e.err
+}
+
+func isFilterLogsRangeLimit(err error) bool {
+	var queryErr *filterLogsQueryError
+	if !errors.As(err, &queryErr) {
+		return false
+	}
+	message := strings.ToLower(queryErr.err.Error())
+	patterns := []string{
+		"too many results",
+		"query returned more than",
+		"response size exceeded",
+		"response too large",
+		"result set too large",
+		"log response size exceeded",
+		"block range is too wide",
+		"block range too large",
+		"limit exceeded",
+		"please limit the query",
+	}
+	for _, pattern := range patterns {
+		if strings.Contains(message, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// suggestedFilterLogsStep extracts a provider-recommended inclusive block
+// range such as "[0x6E57751, 0x6E57785]". The recommendation is accepted only
+// when it starts at the attempted fromBlock and strictly reduces that request,
+// so a malformed provider response can never skip blocks.
+func suggestedFilterLogsStep(err error) (uint64, bool) {
+	var queryErr *filterLogsQueryError
+	if !errors.As(err, &queryErr) {
+		return 0, false
+	}
+	match := suggestedBlockRangePattern.FindStringSubmatch(queryErr.err.Error())
+	if len(match) != 3 {
+		return 0, false
+	}
+	fromBlock, fromErr := strconv.ParseUint(match[1][2:], 16, 64)
+	toBlock, toErr := strconv.ParseUint(match[2][2:], 16, 64)
+	if fromErr != nil || toErr != nil || fromBlock != queryErr.fromBlock || toBlock < fromBlock || toBlock >= queryErr.toBlock {
+		return 0, false
+	}
+	return toBlock - fromBlock + 1, true
 }
 
 func (s *ChainService) handleLogInTx(ctx context.Context, contractAddress, module string, handler LogHandler, eventLog types.Log) error {

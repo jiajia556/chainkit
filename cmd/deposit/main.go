@@ -22,10 +22,16 @@ func main() {
 	var blockNum uint64
 	var backfillLimit int
 	var backfillStep uint64
+	var catchUpBudget time.Duration
+	var inboxBatchSize int
+	var inboxPollInterval time.Duration
 	flag.Uint64Var(&blockNum, "block_num", 0, "Deposit service start block number")
 	flag.IntVar(&cycle, "cycle", 30, "Deposit service cycle time in seconds")
 	flag.IntVar(&backfillLimit, "backfill_limit", 10, "Backfill task count per cycle")
 	flag.Uint64Var(&backfillStep, "backfill_step", 1000, "Backfill block step per RPC query")
+	flag.DurationVar(&catchUpBudget, "catch_up_budget", 20*time.Second, "Maximum catch-up time per deposit token in one cycle; 0 scans until caught up")
+	flag.IntVar(&inboxBatchSize, "inbox_batch_size", 200, "Maximum deposit inbox events processed per batch")
+	flag.DurationVar(&inboxPollInterval, "inbox_poll_interval", time.Second, "Deposit inbox polling interval when the queue is not full")
 	flag.StringVar(&configPath, "config", defaultConfigPath(), "Config json file path")
 	flag.Parse()
 	err := config.Load(configPath)
@@ -45,24 +51,42 @@ func main() {
 	}
 
 	deposit.BlockNum = blockNum
+	deposit.CatchUpBudget = catchUpBudget
+	deposit.InboxProcessLimit = inboxBatchSize
+	deposit.InboxIdleInterval = inboxPollInterval
 	backfillevent.TaskLimit = backfillLimit
 	backfillevent.BlockStep = backfillStep
-	err = runner.New(time.Duration(cycle)*time.Second, func(ctx context.Context) {
-		wg := &sync.WaitGroup{}
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			deposit.Start(ctx)
-		}()
-		go func() {
-			defer wg.Done()
-			backfillevent.Start(ctx)
-		}()
-		wg.Wait()
-	}).Run(context.Background())
+
+	var startLongRunningOnce sync.Once
+	startLongRunning := func(ctx context.Context) {
+		startLongRunningOnce.Do(func() {
+			startTracked(ctx, "deposit websocket", deposit.StartWebSocket)
+			startTracked(ctx, "deposit inbox processor", deposit.StartInboxProcessor)
+		})
+	}
+
+	r := runner.New(
+		time.Duration(cycle)*time.Second,
+		startLongRunning,
+		deposit.Start,
+		backfillevent.Start,
+	)
+	runner.WithTrackedWait()(r)
+	err = r.Run(context.Background())
 	if err != nil {
 		panic(err)
 	}
+}
+
+func startTracked(ctx context.Context, name string, task func(context.Context)) {
+	if !runner.SafeTrackAdd(ctx, 1) {
+		log.Error("failed to track long-running service", "service", name)
+		return
+	}
+	go func() {
+		defer runner.SafeTrackDone(ctx)
+		task(ctx)
+	}()
 }
 
 func defaultConfigPath() string {

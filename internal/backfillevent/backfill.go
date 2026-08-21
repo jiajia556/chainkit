@@ -103,8 +103,8 @@ func handleTask(ctx context.Context, task *chainkiteventbackfilltask.ChainEventB
 			toBlock = task.EndBlock
 		}
 
-		scanCtx := context.WithValue(ctx, "minDepositAmount", minDepositAmount)
-		if err := cs.ScanBlockRange(scanCtx, task.ContractAddress, task.Module, fromBlock, toBlock, deposit.HandleDeposit, func(logCtx *service.LogContext) error {
+		scanCtx := deposit.WithMinDepositAmount(ctx, minDepositAmount)
+		if err := cs.ScanBlockRange(scanCtx, task.ContractAddress, task.Module, fromBlock, toBlock, deposit.EnqueueDeposit, func(logCtx *service.LogContext) error {
 			taskRecord := chainkiteventbackfilltask.NewRecord(logCtx.Session)
 			taskRecord.Model.Id = task.Id
 			return taskRecord.SetCurrentBlock(toBlock)

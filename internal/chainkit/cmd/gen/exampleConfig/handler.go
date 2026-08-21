@@ -28,6 +28,7 @@ func genExampleConfig() {
 				{
 					Name:              "Ethereum",
 					Rpc:               "https://rpc.ankr.com/eth",
+					WsRpc:             "wss://your-ethereum-websocket-rpc",
 					ChainId:           1,
 					SafeConfirmations: 12,
 				},

@@ -2,3 +2,5 @@
 *.exe
 *.bin
 *.log
+*.json
+*.sql

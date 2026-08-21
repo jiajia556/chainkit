@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/big"
 	"time"
 
@@ -19,19 +18,19 @@ import (
 
 func (s *ChainService) MintERC20(token, to string, amount decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
 	if s == nil || s.rpcClient == nil {
-		return "", 0, nil, errors.New("MintERC20: transfer service not initialized")
+		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
-		return "", 0, nil, errors.New("MintERC20: from address not set")
+		return "", 0, nil, errors.New("from address not set")
 	}
 
 	if !common.IsHexAddress(token) {
-		return "", 0, nil, errors.New("MintERC20: invalid token address")
+		return "", 0, nil, errors.New("invalid token address")
 	}
 	tokenAddr := common.HexToAddress(token)
 
 	if !common.IsHexAddress(to) {
-		return "", 0, nil, errors.New("MintERC20: invalid to address")
+		return "", 0, nil, errors.New("invalid to address")
 	}
 	toAddr := common.HexToAddress(to)
 
@@ -44,7 +43,7 @@ func (s *ChainService) MintERC20(token, to string, amount decimal.Decimal, opts 
 
 	txOpts, err := s.GetBindTransactOpts(opts...)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("MintERC20: get transact opts: %w", err)
+		return "", 0, nil, err
 	}
 
 	nonce = 0
@@ -65,13 +64,13 @@ func (s *ChainService) MintERC20(token, to string, amount decimal.Decimal, opts 
 
 	instance, err := mintburnerc20.NewMintburnerc20(tokenAddr, s.rpcClient)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("MintERC20: new contract instance: %w", err)
+		return "", 0, nil, err
 	}
 
 	tx, err := instance.Mint(txOpts, toAddr, amount.BigInt())
 	if err != nil {
 		if lastSignedTx == nil {
-			return "", 0, nil, fmt.Errorf("MintERC20: mint send failed: %w", err)
+			return "", 0, nil, err
 		}
 		hash = lastSignedTx.Hash().Hex()
 		fakeErr = err
@@ -194,7 +193,7 @@ func (s *ChainService) BatchMintERC20(token string, tosStr []string, valuesDec [
 
 func (s *ChainService) DBMint(count int, tokenId uint64, opts ...Option) error {
 	if s == nil || s.rpcClient == nil || s.priKey == nil {
-		return errors.New("DBMint: service not initialized")
+		return errors.New("service not initialized")
 	}
 
 	retryPending := false
@@ -240,7 +239,7 @@ func (s *ChainService) DBMint(count int, tokenId uint64, opts ...Option) error {
 	token := chainkittokens.NewRecord()
 	_ = token.Read(tokenId)
 	if !token.Exists() {
-		return errors.New("DBMint: token not found")
+		return errors.New("token not found")
 	}
 	tosStr := make([]string, 0)
 	valuesDec := make([]decimal.Decimal, 0)
@@ -249,7 +248,7 @@ func (s *ChainService) DBMint(count int, tokenId uint64, opts ...Option) error {
 	list := chainkitmintdetails.NewList()
 	err = list.FindByFromAddressIdAndStatus(s.fromAddressId, tokenId, s.fromAddressType, chainkitmintdetails.StatusWaiting, count)
 	if err != nil {
-		return fmt.Errorf("DBMint: find details: %w", err)
+		return err
 	}
 
 	if list.IsEmpty() {
@@ -265,10 +264,10 @@ func (s *ChainService) DBMint(count int, tokenId uint64, opts ...Option) error {
 
 	txHash, nonce, fakeErr, err := s.BatchMintERC20(token.Model.ContractAddress, tosStr, valuesDec, opts...)
 	if err != nil {
-		return fmt.Errorf("DBMint: batch mint: %w", err)
+		return err
 	}
 	if fakeErr != nil {
-		return fmt.Errorf("DBMint: batch mint uncertain: %w", fakeErr)
+		return fakeErr
 	}
 
 	record := chainkitmintrecords.NewRecord()
@@ -280,7 +279,7 @@ func (s *ChainService) DBMint(count int, tokenId uint64, opts ...Option) error {
 	record.Model.Status = chainkitmintrecords.StatusPending
 	err = record.Create()
 	if err != nil {
-		return fmt.Errorf("DBMint: create record: %w", err)
+		return err
 	}
 
 	chainkitmintdetails.NewRecord().SetPending(ids, record.Model.Id)

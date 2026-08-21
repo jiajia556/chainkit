@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
-	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -105,12 +105,12 @@ func NewChainService(chainDbId uint64) (*ChainService, error) {
 	chain := chainkitchains.NewRecord()
 	err := chain.Read(chainDbId)
 	if err != nil {
-	return nil, fmt.Errorf("NewChainService: read chain %d: %w", chainDbId, err)
+		return nil, err
 	}
 
 	client, err := ethclient.Dial(chain.Model.Rpc)
 	if err != nil {
-		return nil, fmt.Errorf("NewChainService: dial rpc %s: %w", chain.Model.Rpc, err)
+		return nil, err
 	}
 
 	return &ChainService{
@@ -124,12 +124,12 @@ func NewChainService(chainDbId uint64) (*ChainService, error) {
 func NewChainServiceWithRPC(rpc string) (*ChainService, error) {
 	client, err := ethclient.Dial(rpc)
 	if err != nil {
-	return nil, fmt.Errorf("NewChainServiceWithRPC: dial rpc %s: %w", rpc, err)
+		return nil, err
 	}
 
 	chainId, err := client.ChainID(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("NewChainServiceWithRPC: get chain id: %w", err)
+		return nil, err
 	}
 
 	return &ChainService{
@@ -141,25 +141,70 @@ func NewChainServiceWithRPC(rpc string) (*ChainService, error) {
 }
 
 func (s *ChainService) CloseClient() {
-	if s == nil || s.rpcClient == nil {
+	if s == nil {
 		return
 	}
-	s.rpcClient.Close()
-	s.rpcClient = nil
+	if s.rpcClient != nil {
+		s.rpcClient.Close()
+		s.rpcClient = nil
+	}
+	if s.wsClient != nil {
+		s.wsClient.Close()
+		s.wsClient = nil
+	}
 }
 
 func (s *ChainService) DialClient() error {
 	chain := chainkitchains.NewRecord()
 	err := chain.Read(s.chainDbId)
 	if err != nil {
-	return fmt.Errorf("DialClient: read chain %d: %w", s.chainDbId, err)
+		return err
 	}
 
 	client, err := ethclient.Dial(chain.Model.Rpc)
 	if err != nil {
-		return fmt.Errorf("DialClient: dial rpc %s: %w", chain.Model.Rpc, err)
+		return err
 	}
 	s.rpcClient = client
+	return nil
+}
+
+// DialWSClient connects the websocket client configured for this chain.
+// It is explicit rather than part of NewChainService so non-subscription
+// services do not depend on websocket availability.
+func (s *ChainService) DialWSClient(ctx context.Context) error {
+	if s == nil {
+		return errors.New("chain service is nil")
+	}
+
+	chain := chainkitchains.NewRecord()
+	if err := chain.Read(s.chainDbId); err != nil {
+		return err
+	}
+	wsRPC := strings.TrimSpace(chain.Model.WsRpc)
+	if wsRPC == "" {
+		return errors.New("websocket RPC is not configured")
+	}
+
+	client, err := ethclient.DialContext(ctx, wsRPC)
+	if err != nil {
+		return err
+	}
+
+	chainID, err := client.ChainID(ctx)
+	if err != nil {
+		client.Close()
+		return err
+	}
+	if chainID.Uint64() != chain.Model.ChainId {
+		client.Close()
+		return errors.New("websocket RPC chain ID does not match chain configuration")
+	}
+
+	if s.wsClient != nil {
+		s.wsClient.Close()
+	}
+	s.wsClient = client
 	return nil
 }
 
@@ -220,6 +265,10 @@ func privateKeyFromAddressRecord(record privateKeyAddressRecord, password string
 
 func (s *ChainService) GetClient() *ethclient.Client {
 	return s.rpcClient
+}
+
+func (s *ChainService) GetWSClient() *ethclient.Client {
+	return s.wsClient
 }
 
 func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, error) {

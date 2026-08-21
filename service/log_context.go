@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -21,10 +20,10 @@ type LogContext struct {
 
 func (c *LogContext) SaveEventLog(eventLog types.Log) (uint64, bool, error) {
 	if c == nil || c.Session == nil {
-		return 0, false, errors.New("LogContext.SaveEventLog: log context session is nil")
+		return 0, false, errors.New("log context session is nil")
 	}
 	if len(eventLog.Topics) == 0 {
-		return 0, false, errors.New("LogContext.SaveEventLog: event log topics is empty")
+		return 0, false, errors.New("event log topics is empty")
 	}
 
 	logRecord := chainkiteventlogs.NewRecord(c.Session)
@@ -42,7 +41,7 @@ func (c *LogContext) SaveEventLog(eventLog types.Log) (uint64, bool, error) {
 		if readErr := existing.ReadByChainTxHashAndLogIndex(c.ChainDbId, eventLog.TxHash.Hex(), uint32(eventLog.Index)); readErr == nil && existing.Exists() {
 			return existing.Model.Id, false, nil
 		}
-		return 0, false, fmt.Errorf("LogContext.SaveEventLog: create log: %w", err)
+		return 0, false, err
 	}
 
 	return logRecord.Model.Id, true, nil

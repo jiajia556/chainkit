@@ -51,19 +51,19 @@ func isTxDefinitelyNotBroadcast(err error) bool {
 }
 
 func uncertainBroadcastError(hash string, err error) error {
-	return fmt.Errorf("uncertain broadcast: tx hash=%s: %w", hash, err)
+	return fmt.Errorf("broadcast result is uncertain, tx hash: %s, error: %w", hash, err)
 }
 
 func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
 	if s == nil || s.rpcClient == nil {
-		return "", 0, nil, errors.New("TransferETH: transfer service not initialized")
+		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
-		return "", 0, nil, errors.New("TransferETH: from address not set")
+		return "", 0, nil, errors.New("from address not set")
 	}
 
 	if !common.IsHexAddress(to) {
-		return "", 0, nil, errors.New("TransferETH: invalid to address")
+		return "", 0, nil, errors.New("invalid to address")
 	}
 	toAddr := common.HexToAddress(to)
 
@@ -77,22 +77,22 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 	if opt.checkBalance {
 		balance, err := s.BalanceAt(s.fromAddress)
 		if err != nil {
-			return "", 0, nil, fmt.Errorf("TransferETH: balance check: %w", err)
+			return "", 0, nil, err
 		}
 		if balance.LessThan(value) {
-			return "", 0, nil, errors.New("TransferETH: insufficient balance")
+			return "", 0, nil, errors.New("insufficient balance")
 		}
 	}
 
 	ctx := context.Background()
 	chainID := s.chainId
 	if chainID == nil {
-		return "", 0, nil, errors.New("TransferETH: chain id not initialized")
+		return "", 0, nil, errors.New("chain id not initialized")
 	}
 
 	txOpts, err := s.GetBindTransactOpts(opts...)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("TransferETH: get transact opts: %w", err)
+		return "", 0, nil, err
 	}
 
 	weiValue := value.BigInt()
@@ -128,7 +128,7 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 		})
 	} else {
 		if txOpts.GasPrice == nil {
-			return "", 0, nil, errors.New("TransferETH: gas price not set")
+			return "", 0, nil, errors.New("gas price not set")
 		}
 		tx = types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,
@@ -143,13 +143,13 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 	signer := types.LatestSignerForChainID(chainID)
 	signedTx, err := types.SignTx(tx, signer, s.priKey)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("TransferETH: sign tx: %w", err)
+		return "", 0, nil, err
 	}
 
 	if err := s.rpcClient.SendTransaction(ctx, signedTx); err != nil {
 		hash = signedTx.Hash().Hex()
 		if isTxDefinitelyNotBroadcast(err) {
-			return "", nonce, nil, fmt.Errorf("TransferETH: send tx not broadcast: %w", err)
+			return "", nonce, nil, err
 		}
 		fakeErr = uncertainBroadcastError(hash, err)
 		return hash, nonce, fakeErr, nil
@@ -160,19 +160,19 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 
 func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
 	if s == nil || s.rpcClient == nil {
-		return "", 0, nil, errors.New("TransferERC20: transfer service not initialized")
+		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
-		return "", 0, nil, errors.New("TransferERC20: from address not set")
+		return "", 0, nil, errors.New("from address not set")
 	}
 
 	if !common.IsHexAddress(token) {
-		return "", 0, nil, errors.New("TransferERC20: invalid token address")
+		return "", 0, nil, errors.New("invalid token address")
 	}
 	tokenAddr := common.HexToAddress(token)
 
 	if !common.IsHexAddress(to) {
-		return "", 0, nil, errors.New("TransferERC20: invalid to address")
+		return "", 0, nil, errors.New("invalid to address")
 	}
 	toAddr := common.HexToAddress(to)
 
@@ -186,10 +186,10 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 	if opt.checkBalance {
 		balance, err := s.BalanceOf(token, s.fromAddress)
 		if err != nil {
-			return "", 0, nil, fmt.Errorf("TransferERC20: balance check: %w", err)
+			return "", 0, nil, err
 		}
 		if balance.LessThan(amount) {
-			return "", 0, nil, errors.New("TransferERC20: insufficient balance")
+			return "", 0, nil, errors.New("insufficient balance")
 		}
 	}
 
@@ -222,11 +222,11 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 	tx, err := instance.Transfer(txOpts, toAddr, amount.BigInt())
 	if err != nil {
 		if lastSignedTx == nil {
-			return "", 0, nil, fmt.Errorf("TransferERC20: transfer send failed: %w", err)
+			return "", 0, nil, err
 		}
 		hash = lastSignedTx.Hash().Hex()
 		if isTxDefinitelyNotBroadcast(err) {
-			return "", nonce, nil, fmt.Errorf("TransferERC20: send not broadcast: %w", err)
+			return "", nonce, nil, err
 		}
 		fakeErr = uncertainBroadcastError(hash, err)
 		return hash, nonce, fakeErr, nil
@@ -237,13 +237,13 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 
 func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
 	if s == nil || s.rpcClient == nil {
-		return "", 0, nil, errors.New("MultiTransfer: transfer service not initialized")
+		return "", 0, nil, errors.New("transfer service not initialized")
 	}
 	if s.priKey == nil {
-		return "", 0, nil, errors.New("MultiTransfer: from address not set")
+		return "", 0, nil, errors.New("from address not set")
 	}
 	if len(tokensStr) == 0 || len(tosStr) == 0 || len(valuesDec) == 0 {
-		return "", 0, nil, errors.New("MultiTransfer: transfer lists are empty")
+		return "", 0, nil, errors.New("transfer lists are empty")
 	}
 	if len(tokensStr) != len(tosStr) || len(tokensStr) != len(valuesDec) {
 		return "", 0, nil, errors.New("transfer lists length mismatch")
@@ -257,12 +257,12 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	for i := range tokensStr {
 		tokensStr[i] = strings.ToLower(tokensStr[i])
 		if !common.IsHexAddress(tokensStr[i]) {
-			return "", 0, nil, fmt.Errorf("MultiTransfer: invalid token address: %s", tokensStr[i])
+			return "", 0, nil, errors.New("invalid token address: " + tokensStr[i])
 		}
 		tokens[i] = common.HexToAddress(tokensStr[i])
 
 		if !common.IsHexAddress(tosStr[i]) {
-			return "", 0, nil, fmt.Errorf("MultiTransfer: invalid to address: %s", tosStr[i])
+			return "", 0, nil, errors.New("invalid to address: " + tosStr[i])
 		}
 		tos[i] = common.HexToAddress(tosStr[i])
 
@@ -290,17 +290,17 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 				balance, err = s.BalanceOf(tokenAddrStr, s.fromAddress)
 			}
 			if err != nil {
-				return "", 0, nil, fmt.Errorf("MultiTransfer: balance check for %s: %w", tokenAddrStr, err)
+				return "", 0, nil, err
 			}
 			if balance.LessThan(amount) {
-				return "", 0, nil, fmt.Errorf("MultiTransfer: insufficient balance for token: %s", tokenAddrStr)
+				return "", 0, nil, errors.New("insufficient balance for token: " + tokenAddrStr)
 			}
 		}
 	}
 
 	auth, err := bind.NewKeyedTransactorWithChainID(s.priKey, s.chainId)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("MultiTransfer: new transactor: %w", err)
+		return "", 0, nil, err
 	}
 
 	var lastSignedTx *types.Transaction
@@ -324,7 +324,7 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	} else {
 		nonceValue, err := s.rpcClient.PendingNonceAt(context.Background(), auth.From)
 		if err != nil {
-			return "", 0, nil, fmt.Errorf("MultiTransfer: pending nonce: %w", err)
+			return "", 0, nil, err
 		}
 		auth.Nonce = big.NewInt(int64(nonceValue))
 	}
@@ -338,7 +338,7 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	} else {
 		auth.GasPrice, err = s.rpcClient.SuggestGasPrice(context.Background())
 		if err != nil {
-			return "", 0, nil, fmt.Errorf("MultiTransfer: suggest gas price: %w", err)
+			return "", 0, nil, err
 		}
 	}
 	if opt.useMinGasPrice {
@@ -354,12 +354,12 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	multiTransferContract := chainkitcontracts.NewRecord()
 	err = multiTransferContract.ReadByNameAndChainDbId("MultiTransfer", s.chainDbId)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("MultiTransfer: read contract: %w", err)
+		return "", 0, nil, err
 	}
 
 	instance, err := multitransfer.NewMultitransfer(common.HexToAddress(multiTransferContract.Model.Address), s.rpcClient)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("MultiTransfer: new contract instance: %w", err)
+		return "", 0, nil, err
 	}
 
 	nonce = auth.Nonce.Uint64()
@@ -367,11 +367,11 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	tx, err := instance.MultiTransferToken(auth, tokens, tos, values)
 	if err != nil {
 		if lastSignedTx == nil {
-			return "", 0, nil, fmt.Errorf("MultiTransfer: multi transfer send failed: %w", err)
+			return "", 0, nil, err
 		}
 		hash = lastSignedTx.Hash().Hex()
 		if isTxDefinitelyNotBroadcast(err) {
-			return "", nonce, nil, fmt.Errorf("MultiTransfer: send not broadcast: %w", err)
+			return "", nonce, nil, err
 		}
 		fakeErr = uncertainBroadcastError(hash, err)
 		err = nil
