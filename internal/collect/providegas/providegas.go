@@ -35,6 +35,9 @@ func handleChain(chain *chainkitchains.Record) {
 		log.Error("failed to read collect config", "chain db id", chain.Model.Id)
 		return
 	}
+	if collectConf.Model.EIP7702Enabled {
+		return
+	}
 	srv, err := service.NewChainService(chain.Model.Id)
 	if err != nil {
 		log.Error("failed to create chain service", "error", err, "chain db id", chain.Model.Id)

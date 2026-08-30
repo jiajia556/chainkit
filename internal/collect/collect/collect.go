@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jiajia556/chainkit/internal/collect/eip7702batch"
 	"github.com/jiajia556/chainkit/models/chainkitchains"
 	"github.com/jiajia556/chainkit/models/chainkitcollectconfig"
 	"github.com/jiajia556/chainkit/models/chainkitcollectgasfeetasks"
@@ -19,6 +20,7 @@ import (
 )
 
 var CollectPassword string
+var EIP7702SponsorPassword string
 
 func Start(ctx context.Context) {
 	chains := chainkitchains.NewList()
@@ -38,6 +40,17 @@ func Start(ctx context.Context) {
 			log.Error("failed to read collect config", "chain db id", chain.Model.Id)
 			return true
 		}
+		if collectConf.Model.EIP7702Enabled {
+			if err := eip7702batch.RunChain(
+				ctx,
+				collectConf.Model,
+				CollectPassword,
+				EIP7702SponsorPassword,
+			); err != nil {
+				log.Error("failed to run EIP-7702 collect", "error", err, "chain db id", chain.Model.Id)
+			}
+			return true
+		}
 
 		srv, err := service.NewChainService(chain.Model.Id)
 		if err != nil {
@@ -45,6 +58,7 @@ func Start(ctx context.Context) {
 			log.Error("failed to create chain service", "error", err, "chain db id", chain.Model.Id)
 			return true
 		}
+		defer srv.CloseClient()
 		handleWaiting(srv, chain, collectConf)
 		collect(chain)
 		log.Debug("Start collect: start checking collect status", "chain db id", chain.Model.Id)

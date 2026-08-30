@@ -114,6 +114,18 @@ func ScanBudget(budget time.Duration) ScanOption {
 	}
 }
 
+// HeaderByNumber performs a rate-limited header lookup. Deposit uses this for
+// confirmation processing so it shares the same per-chain limiter as getLogs.
+func (s *ChainService) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+	if s == nil || s.rpcClient == nil {
+		return nil, errors.New("chain service not initialized")
+	}
+	if err := s.waitForRPCRequest(ctx); err != nil {
+		return nil, err
+	}
+	return s.rpcClient.HeaderByNumber(ctx, number)
+}
+
 func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module string, handler LogHandler, option ...ScanOption) error {
 	//log.Debug("starting scan block", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
 	if s.rpcClient == nil {
@@ -182,7 +194,7 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 func (s *ChainService) scanBlockOnce(ctx context.Context, contractAddress, module string, handler LogHandler, opts *scanOptions, step uint64) (bool, bool, error) {
 
 	//log.Debug("retrieved header", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
-	header, err := s.rpcClient.HeaderByNumber(ctx, nil)
+	header, err := s.HeaderByNumber(ctx, nil)
 	if err != nil {
 		return false, false, err
 	}
@@ -310,6 +322,9 @@ func (s *ChainService) scanBlockRangeLogs(ctx context.Context, contractAddress, 
 		Addresses: []common.Address{contract},
 	}
 
+	if err := s.waitForRPCRequest(ctx); err != nil {
+		return err
+	}
 	logs, err := s.rpcClient.FilterLogs(ctx, query)
 	if err != nil {
 		return &filterLogsQueryError{fromBlock: fromBlock, toBlock: toBlock, err: err}

@@ -39,12 +39,13 @@ func main() {
 		panic(err)
 	}
 	collect.CollectPassword = string(passwordByte)
+	collect.EIP7702SponsorPassword = string(passwordByte)
 
-	fmt.Println("enter gas password:")
-	passwordByte, err = gopass.GetPasswd()
-	if err != nil {
-		panic(err)
-	}
+	//fmt.Println("enter gas password:")
+	//passwordByte, err = gopass.GetPasswd()
+	//if err != nil {
+	//	panic(err)
+	//}
 	providegas.Password = string(passwordByte)
 
 	logConfig := log.DefaultConfig()

@@ -27,6 +27,12 @@ const (
 	StatusMaybeSent = 10
 )
 
+const (
+	CollectMethodUndecided = iota
+	CollectMethodTraditional
+	CollectMethodEIP7702
+)
+
 func NewRecord(session ...mysqlx.Session) *Record {
 	var dbSession mysqlx.Session
 	if len(session) > 0 {
@@ -143,6 +149,51 @@ func (r *Record) BatchSetCanSend(ids []uint64) error {
 	return r.DB().Table(r.Model.TableName()).Where("id IN (?) AND status = ?", ids, StatusWaiting).Updates(map[string]interface{}{
 		"status": StatusCanSend,
 	}).Error
+}
+
+// BatchClaimForEIP7702 atomically reserves waiting tasks for one sponsored batch.
+// The existing nonce column remains untouched because it belongs to traditional
+// transactions; sponsor and authorization nonces live in the batch tables.
+func (r *Record) BatchClaimForEIP7702(ids []uint64, batchId uint64) (int64, error) {
+	if len(ids) == 0 || batchId == 0 {
+		return 0, nil
+	}
+	result := r.DB().Table(r.Model.TableName()).
+		Where(
+			"id IN (?) AND status = ? AND collect_method = ? AND batch_id = 0",
+			ids,
+			StatusWaiting,
+			CollectMethodUndecided,
+		).
+		Updates(map[string]interface{}{
+			"status":         StatusSending,
+			"collect_method": CollectMethodEIP7702,
+			"batch_id":       batchId,
+			"last_error":     "",
+		})
+	return result.RowsAffected, result.Error
+}
+
+func (r *Record) SetBatchSent(batchId uint64, hash string) error {
+	return r.DB().Table(r.Model.TableName()).
+		Where("batch_id = ? AND status IN (?)", batchId, []int{StatusSending, StatusMaybeSent}).
+		Updates(map[string]interface{}{
+			"status":     StatusSent,
+			"tx_hash":    hash,
+			"sent_at":    time.Now(),
+			"last_error": "",
+		}).Error
+}
+
+func (r *Record) SetBatchMaybeSent(batchId uint64, hash, lastError string) error {
+	return r.DB().Table(r.Model.TableName()).
+		Where("batch_id = ? AND status IN (?)", batchId, []int{StatusSending, StatusSent, StatusMaybeSent}).
+		Updates(map[string]interface{}{
+			"status":     StatusMaybeSent,
+			"tx_hash":    hash,
+			"sent_at":    time.Now(),
+			"last_error": lastError,
+		}).Error
 }
 
 func (r *Record) SetWaitingByGasTaskId(gasTaskId uint64) {

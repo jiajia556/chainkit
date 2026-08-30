@@ -77,6 +77,7 @@ func handleTask(ctx context.Context, task *chainkiteventbackfilltask.ChainEventB
 		return err
 	}
 	defer cs.CloseClient()
+	cs.SetRPCRequestInterval(deposit.RPCRequestInterval)
 
 	minDepositAmount := readMinDepositAmount(task.ChainDbId, task.ContractAddress)
 	nextBlock := task.CurrentBlock + 1

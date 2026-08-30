@@ -9,6 +9,7 @@ import (
 	"github.com/jiajia556/chainkit/service"
 	"github.com/jiajia556/tool-box/mysqlx"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 type Record struct {
@@ -56,6 +57,14 @@ func (r *Record) Deposit(amount decimal.Decimal, hash string) error {
 }
 
 func (r *Record) GetBalanceFromChain() (decimal.Decimal, error) {
+	if r.Model.TokenId == 0 {
+		cs, err := service.NewChainService(r.Model.ChainDbId)
+		if err != nil {
+			return decimal.Zero, fmt.Errorf("failed to create chain service, chainDbId: %d, error: %w", r.Model.ChainDbId, err)
+		}
+		defer cs.CloseClient()
+		return cs.BalanceAt(r.Model.Address)
+	}
 	token := chainkittokens.NewRecord()
 	_ = token.Read(r.Model.TokenId)
 	if !token.Exists() {
@@ -65,11 +74,23 @@ func (r *Record) GetBalanceFromChain() (decimal.Decimal, error) {
 	if err != nil {
 		return decimal.Zero, fmt.Errorf("failed to create chain service, chainDbId: %d, error: %w", r.Model.ChainDbId, err)
 	}
+	defer cs.CloseClient()
 	chainBalance, err := cs.BalanceOf(token.Model.ContractAddress, r.Model.Address)
 	if err != nil {
 		return decimal.Zero, fmt.Errorf("failed to get chain balance, chainDbId: %d, error: %w", r.Model.ChainDbId, err)
 	}
 	return chainBalance, nil
+}
+
+// CollectedWithBalance updates accounting with a balance already read after a
+// confirmed receipt. It avoids making an RPC call while holding a DB transaction.
+func (r *Record) CollectedWithBalance(amount, chainBalance decimal.Decimal, hash string) error {
+	return r.DB().Model(r.Model).Where("id = ?", r.Model.Id).Updates(map[string]interface{}{
+		"balance_amount":       chainBalance,
+		"last_collect_tx_hash": hash,
+		"collected_out_amount": gorm.Expr("collected_out_amount + ?", amount),
+		"updated_at":           time.Now(),
+	}).Error
 }
 
 func (r *Record) Collected(amount decimal.Decimal, hash string) error {

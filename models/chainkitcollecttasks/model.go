@@ -27,7 +27,9 @@ type ChainCollectTasks struct {
 	GasUsed              decimal.Decimal `gorm:"column:gas_used;unsigned;default:null" json:"gas_used"`
 	TxFee                decimal.Decimal `gorm:"column:tx_fee;unsigned;default:null" json:"tx_fee"`
 	Status               uint8           `gorm:"column:status;unsigned;notNull;default:0" json:"status"`
-	GasTaskId            uint64          `gorm:"column:gas_task_id;notNull;unsigned" json:"gas_task_id"`
+	GasTaskId            uint64          `gorm:"column:gas_task_id;notNull;unsigned;default:0" json:"gas_task_id"`
+	CollectMethod        uint8           `gorm:"column:collect_method;unsigned;notNull;default:0" json:"collect_method"`
+	BatchId              uint64          `gorm:"column:batch_id;unsigned;notNull;default:0" json:"batch_id"`
 	LastError            string          `gorm:"column:last_error;default:null" json:"last_error"`
 	SentAt               time.Time       `gorm:"column:sent_at;default:null" json:"sent_at"`
 	ConfirmedAt          time.Time       `gorm:"column:confirmed_at;default:null" json:"confirmed_at"`
@@ -45,5 +47,40 @@ func (data *ChainCollectTasks) TableName() string {
 }
 
 func (data *ChainCollectTasks) GetCreateDDL() string {
-	return "CREATE TABLE `chain_collect_tasks` (\n  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',\n  `chain_db_id` bigint unsigned NOT NULL COMMENT '链配置表ID',\n  `token_id` bigint unsigned NOT NULL COMMENT '代币ID，0表示原生币',\n  `user_id` bigint unsigned NOT NULL COMMENT '用户ID',\n  `user_deposit_address_id` bigint unsigned NOT NULL COMMENT '用户充值地址ID',\n  `from_address` char(42) NOT NULL COMMENT '归集来源地址',\n  `to_address` char(42) NOT NULL COMMENT '归集目标地址',\n  `plan_amount` decimal(36,0) unsigned NOT NULL DEFAULT '0' COMMENT '创建任务时链上余额快照，最小单位',\n  `actual_amount` decimal(36,0) unsigned DEFAULT NULL COMMENT '实际归集金额，最小单位',\n  `gas_required_amount` decimal(36,0) unsigned DEFAULT NULL COMMENT '预计需要gas数量，原生币最小单位',\n  `gas_balance_before_tx` decimal(36,0) unsigned DEFAULT NULL COMMENT '执行前原生币余额，最小单位',\n  `tx_hash` char(66) DEFAULT NULL COMMENT '归集交易hash',\n  `nonce` bigint unsigned DEFAULT NULL COMMENT '交易nonce',\n  `gas_limit` decimal(36,0) unsigned NOT NULL COMMENT '交易gas limit',\n  `gas_price` decimal(36,0) unsigned DEFAULT NULL COMMENT 'legacy gas price，wei',\n  `max_fee_per_gas` decimal(36,0) unsigned DEFAULT NULL COMMENT 'EIP-1559 maxFeePerGas，wei',\n  `max_priority_fee_per_gas` decimal(36,0) unsigned DEFAULT NULL COMMENT 'EIP-1559 maxPriorityFeePerGas，wei',\n  `gas_used` decimal(36,0) unsigned DEFAULT NULL COMMENT '实际消耗gas',\n  `tx_fee` decimal(36,0) unsigned DEFAULT NULL COMMENT '实际交易手续费，原生币最小单位',\n  `status` tinyint unsigned NOT NULL DEFAULT '0' COMMENT '状态：0待处理 1等待gas 2可执行 3发送中 4已广播 5已确认 6失败 7取消 8跳过',\n  `gas_task_id` bigint unsigned NOT NULL,\n  `last_error` varchar(1024) DEFAULT NULL COMMENT '最后错误信息',\n  `sent_at` datetime DEFAULT NULL COMMENT '广播时间',\n  `confirmed_at` datetime DEFAULT NULL COMMENT '确认时间',\n  `remark` varchar(255) DEFAULT NULL COMMENT '备注',\n  `created_at` datetime NOT NULL COMMENT '创建时间',\n  `updated_at` datetime NOT NULL COMMENT '更新时间',\n  PRIMARY KEY (`id`),\n  KEY `idx_address_token_status` (`user_deposit_address_id`,`token_id`,`status`),\n  KEY `idx_chain_status` (`chain_db_id`,`status`),\n  KEY `idx_address_chain_status` (`user_deposit_address_id`,`chain_db_id`,`status`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='链上资产归集任务表';"
+	return `CREATE TABLE chain_collect_tasks (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  chain_db_id BIGINT UNSIGNED NOT NULL,
+  token_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  user_deposit_address_id BIGINT UNSIGNED NOT NULL,
+  from_address CHAR(42) NOT NULL,
+  to_address CHAR(42) NOT NULL,
+  plan_amount DECIMAL(36,0) UNSIGNED NOT NULL DEFAULT 0,
+  actual_amount DECIMAL(36,0) UNSIGNED DEFAULT NULL,
+  gas_required_amount DECIMAL(36,0) UNSIGNED DEFAULT NULL,
+  gas_balance_before_tx DECIMAL(36,0) UNSIGNED DEFAULT NULL,
+  tx_hash CHAR(66) DEFAULT NULL,
+  nonce BIGINT UNSIGNED DEFAULT NULL COMMENT 'traditional collect transaction nonce',
+  gas_limit DECIMAL(36,0) UNSIGNED NOT NULL,
+  gas_price DECIMAL(36,0) UNSIGNED DEFAULT NULL,
+  max_fee_per_gas DECIMAL(36,0) UNSIGNED DEFAULT NULL,
+  max_priority_fee_per_gas DECIMAL(36,0) UNSIGNED DEFAULT NULL,
+  gas_used DECIMAL(36,0) UNSIGNED DEFAULT NULL,
+  tx_fee DECIMAL(36,0) UNSIGNED DEFAULT NULL,
+  status TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  gas_task_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  collect_method TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0:undecided 1:traditional 2:eip7702',
+  batch_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  last_error VARCHAR(1024) DEFAULT NULL,
+  sent_at DATETIME DEFAULT NULL,
+  confirmed_at DATETIME DEFAULT NULL,
+  remark VARCHAR(255) DEFAULT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_address_token_status (user_deposit_address_id, token_id, status),
+  KEY idx_chain_status (chain_db_id, status),
+  KEY idx_address_chain_status (user_deposit_address_id, chain_db_id, status),
+  KEY idx_batch_id (batch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='chain asset collect tasks';`
 }

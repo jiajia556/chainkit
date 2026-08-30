@@ -42,12 +42,31 @@ func (l *List) GetWaitingList(chainDbId uint64) *List {
 	return l
 }
 
+func (l *List) GetWaitingUndecidedList(chainDbId uint64, limit int) *List {
+	query := l.DB().Where(
+		"chain_db_id = ? AND status = ? AND collect_method = ? AND batch_id = 0",
+		chainDbId,
+		StatusWaiting,
+		CollectMethodUndecided,
+	).Order("id ASC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	query.Find(l.Records)
+	return l
+}
+
 func (l *List) GetCanSendList(chainDbId uint64) *List {
 	l.DB().Where("chain_db_id = ? AND status = 2", chainDbId).Find(l.Records)
 	return l
 }
 
 func (l *List) GetCentList(chainDbId uint64) *List {
-	l.DB().Debug().Where("chain_db_id = ? AND status IN (?)", chainDbId, []int{StatusSent, StatusMaybeSent}).Find(l.Records)
+	l.DB().Debug().Where(
+		"chain_db_id = ? AND collect_method != ? AND status IN (?)",
+		chainDbId,
+		CollectMethodEIP7702,
+		[]int{StatusSent, StatusMaybeSent},
+	).Find(l.Records)
 	return l
 }
