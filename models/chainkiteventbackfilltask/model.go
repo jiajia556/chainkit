@@ -2,6 +2,8 @@ package chainkiteventbackfilltask
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type ChainEventBackfillTask struct {
@@ -24,6 +26,12 @@ func (data *ChainEventBackfillTask) ID() uint64 {
 
 func (data *ChainEventBackfillTask) TableName() string {
 	return "chain_event_backfill_task"
+}
+
+func (data *ChainEventBackfillTask) BeforeCreate(tx *gorm.DB) (err error) {
+	data.CreatedAt = time.Now()
+	data.UpdatedAt = time.Now()
+	return nil
 }
 
 func (data *ChainEventBackfillTask) GetCreateDDL() string {

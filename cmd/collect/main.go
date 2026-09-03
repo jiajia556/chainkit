@@ -20,7 +20,7 @@ import (
 func main() {
 	var configPath string
 	var cycle int
-	flag.IntVar(&cycle, "cycle", 600, "Collect cycle in minutes")
+	flag.IntVar(&cycle, "cycle", 600, "Collect cycle in seconds")
 	flag.StringVar(&configPath, "config", "./config.json", "Config json file path")
 	flag.Parse()
 	err := config.Load(configPath)

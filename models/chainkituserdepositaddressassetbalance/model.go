@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 type ChainUserDepositAddressAssetBalance struct {
@@ -29,6 +30,12 @@ func (data *ChainUserDepositAddressAssetBalance) ID() uint64 {
 
 func (data *ChainUserDepositAddressAssetBalance) TableName() string {
 	return "chain_user_deposit_address_asset_balance"
+}
+
+func (data *ChainUserDepositAddressAssetBalance) BeforeCreate(tx *gorm.DB) (err error) {
+	data.CreatedAt = time.Now()
+	data.UpdatedAt = time.Now()
+	return nil
 }
 
 func (data *ChainUserDepositAddressAssetBalance) GetCreateDDL() string {

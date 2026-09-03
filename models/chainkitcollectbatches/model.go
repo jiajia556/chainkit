@@ -1,6 +1,10 @@
 package chainkitcollectbatches
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 type ChainCollectBatches struct {
 	Id                       uint64    `gorm:"column:id;unsigned;autoIncrement;notNull;primaryKey" json:"id"`
@@ -32,6 +36,13 @@ func (data *ChainCollectBatches) ID() uint64 {
 
 func (data *ChainCollectBatches) TableName() string {
 	return "chain_collect_batches"
+}
+
+func (data *ChainCollectBatches) BeforeCreate(tx *gorm.DB) (err error) {
+	data.CreatedAt = time.Now()
+	data.UpdatedAt = time.Now()
+	return nil
+
 }
 
 func (data *ChainCollectBatches) GetCreateDDL() string {

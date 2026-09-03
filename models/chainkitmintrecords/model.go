@@ -2,6 +2,8 @@ package chainkitmintrecords
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type ChainMintRecords struct {
@@ -22,6 +24,12 @@ func (data *ChainMintRecords) ID() uint64 {
 
 func (data *ChainMintRecords) TableName() string {
 	return "chain_mint_records"
+}
+
+func (data *ChainMintRecords) BeforeCreate(tx *gorm.DB) (err error) {
+	data.CreatedAt = time.Now()
+	data.UpdatedAt = time.Now()
+	return nil
 }
 
 func (data *ChainMintRecords) GetCreateDDL() string {

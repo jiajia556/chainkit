@@ -6,8 +6,6 @@ import (
 	"errors"
 	"math/big"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -35,24 +33,6 @@ type ChainService struct {
 	fromAddress       string
 	priKey            *ecdsa.PrivateKey
 	safeConfirmations uint64
-	rpcRequestLimiter *rpcRequestLimiter
-	localRPCLimiter   rpcRequestLimiter
-}
-
-type rpcRequestLimiter struct {
-	mu       sync.Mutex
-	interval time.Duration
-	last     time.Time
-}
-
-// All ChainService instances for one configured chain share a limiter. This is
-// important for processes such as deposit, which use separate clients for the
-// scanner, backfill tasks, and inbox processor.
-var chainRPCLimiters sync.Map
-
-func sharedRPCLimiter(chainDbID uint64) *rpcRequestLimiter {
-	limiter, _ := chainRPCLimiters.LoadOrStore(chainDbID, &rpcRequestLimiter{})
-	return limiter.(*rpcRequestLimiter)
 }
 
 type privateKeyAddressRecord interface {
@@ -138,7 +118,6 @@ func NewChainService(chainDbId uint64) (*ChainService, error) {
 		chainId:           big.NewInt(int64(chain.Model.ChainId)),
 		chainDbId:         chain.Model.Id,
 		safeConfirmations: chain.Model.SafeConfirmations,
-		rpcRequestLimiter: sharedRPCLimiter(chain.Model.Id),
 	}, nil
 }
 
@@ -158,7 +137,6 @@ func NewChainServiceWithRPC(rpc string) (*ChainService, error) {
 		chainId:           chainId,
 		chainDbId:         0,
 		safeConfirmations: 0,
-		rpcRequestLimiter: &rpcRequestLimiter{},
 	}, nil
 }
 
@@ -291,54 +269,6 @@ func (s *ChainService) GetClient() *ethclient.Client {
 
 func (s *ChainService) GetWSClient() *ethclient.Client {
 	return s.wsClient
-}
-
-// SetRPCRequestInterval sets the minimum time between throttled RPC requests.
-// Configured ChainService instances for the same chain share this setting and
-// request schedule. A non-positive interval disables throttling.
-func (s *ChainService) SetRPCRequestInterval(interval time.Duration) {
-	if s == nil {
-		return
-	}
-	limiter := s.getRPCRequestLimiter()
-	limiter.mu.Lock()
-	defer limiter.mu.Unlock()
-	if interval < 0 {
-		interval = 0
-	}
-	limiter.interval = interval
-	if interval == 0 {
-		limiter.last = time.Time{}
-	}
-}
-
-func (s *ChainService) getRPCRequestLimiter() *rpcRequestLimiter {
-	if s.rpcRequestLimiter != nil {
-		return s.rpcRequestLimiter
-	}
-	return &s.localRPCLimiter
-}
-
-func (s *ChainService) waitForRPCRequest(ctx context.Context) error {
-	limiter := s.getRPCRequestLimiter()
-	limiter.mu.Lock()
-	defer limiter.mu.Unlock()
-
-	if limiter.interval > 0 && !limiter.last.IsZero() {
-		wait := time.Until(limiter.last.Add(limiter.interval))
-		if wait > 0 {
-			timer := time.NewTimer(wait)
-			defer timer.Stop()
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}
-	}
-
-	limiter.last = time.Now()
-	return nil
 }
 
 func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, error) {

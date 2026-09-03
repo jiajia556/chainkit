@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -13,6 +14,12 @@ import (
 	"github.com/jiajia556/chainkit/models/chainkitcollecttasks"
 	"github.com/jiajia556/chainkit/pkg/contracts/batchsweepexecutor"
 	"github.com/jiajia556/chainkit/service"
+)
+
+const (
+	minExecutorItemCallGas  = 40_000
+	maxExecutorItemCallGas  = 500_000
+	executorPostCallReserve = 30_000
 )
 
 // Execute claims, signs and broadcasts one waiting sponsored collect batch.
@@ -232,6 +239,10 @@ func Execute(
 	if err != nil {
 		return failWaiting(err)
 	}
+	request.GasLimit, err = addCollectExecutionBudget(request.GasLimit, collectItems)
+	if err != nil {
+		return failWaiting(err)
+	}
 
 	var signedTx *types.Transaction
 	if batch.Model.TxType == types.SetCodeTxType {
@@ -286,4 +297,36 @@ func Execute(
 		return fmt.Errorf("persist sent collect tasks: %w", err)
 	}
 	return nil
+}
+
+// addCollectExecutionBudget prevents eth_estimateGas from accepting the
+// executor's non-reverting InsufficientExecutionGas path as a successful
+// estimate. The limits and reserve mirror BatchSweepExecutor._collectOne.
+func addCollectExecutionBudget(
+	estimated uint64,
+	items []batchsweepexecutor.BatchSweepExecutorCollectItem,
+) (uint64, error) {
+	gasLimit := estimated
+	for index, item := range items {
+		if item.CallGasLimit == nil || item.CallGasLimit.Sign() < 0 || !item.CallGasLimit.IsUint64() {
+			return 0, fmt.Errorf("collect item %d has invalid call gas limit", index)
+		}
+
+		callGas := item.CallGasLimit.Uint64()
+		if callGas < minExecutorItemCallGas {
+			callGas = minExecutorItemCallGas
+		}
+		if callGas > maxExecutorItemCallGas {
+			callGas = maxExecutorItemCallGas
+		}
+		if gasLimit > math.MaxUint64-callGas {
+			return 0, errors.New("collect transaction gas limit overflows uint64")
+		}
+		gasLimit += callGas
+		if gasLimit > math.MaxUint64-executorPostCallReserve {
+			return 0, errors.New("collect transaction gas limit overflows uint64")
+		}
+		gasLimit += executorPostCallReserve
+	}
+	return gasLimit, nil
 }

@@ -78,7 +78,6 @@ func runChainInboxProcessor(ctx context.Context, chainDbID, safeConfirmations ui
 			}
 			continue
 		}
-		chainService.SetRPCRequestInterval(RPCRequestInterval)
 		runConnectedInboxProcessor(ctx, chainService, chainDbID, safeConfirmations)
 		chainService.CloseClient()
 	}
@@ -135,7 +134,7 @@ func processInboxBatch(ctx context.Context, chainService *service.ChainService, 
 		return 0, errors.New("chain service is not initialized")
 	}
 
-	header, err := chainService.HeaderByNumber(ctx, nil)
+	header, err := chainService.GetClient().HeaderByNumber(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -197,7 +196,7 @@ func effectiveInboxIdleInterval() time.Duration {
 
 func processInboxRecord(ctx context.Context, chainService *service.ChainService, record *chainkitdepositeventinbox.Record) error {
 	inbox := record.Model
-	header, err := chainService.HeaderByNumber(ctx, new(big.Int).SetUint64(inbox.BlockNumber))
+	header, err := chainService.GetClient().HeaderByNumber(ctx, new(big.Int).SetUint64(inbox.BlockNumber))
 	if err != nil {
 		return err
 	}

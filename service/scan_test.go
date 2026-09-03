@@ -1,66 +1,9 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"testing"
-	"time"
 )
-
-func TestWaitForRPCRequestEnforcesMinimumInterval(t *testing.T) {
-	service := &ChainService{}
-	interval := 25 * time.Millisecond
-	service.SetRPCRequestInterval(interval)
-
-	if err := service.waitForRPCRequest(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	startedAt := time.Now()
-	if err := service.waitForRPCRequest(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if elapsed := time.Since(startedAt); elapsed < interval-2*time.Millisecond {
-		t.Fatalf("second RPC request waited %v, want at least %v", elapsed, interval)
-	}
-}
-
-func TestWaitForRPCRequestHonorsContext(t *testing.T) {
-	service := &ChainService{}
-	service.SetRPCRequestInterval(time.Second)
-	if err := service.waitForRPCRequest(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	startedAt := time.Now()
-	err := service.waitForRPCRequest(ctx)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("waitForRPCRequest() error = %v, want context canceled", err)
-	}
-	if elapsed := time.Since(startedAt); elapsed > 100*time.Millisecond {
-		t.Fatalf("canceled wait took too long: %v", elapsed)
-	}
-}
-
-func TestWaitForRPCRequestIsSharedAcrossServices(t *testing.T) {
-	limiter := &rpcRequestLimiter{}
-	first := &ChainService{rpcRequestLimiter: limiter}
-	second := &ChainService{rpcRequestLimiter: limiter}
-	interval := 25 * time.Millisecond
-	first.SetRPCRequestInterval(interval)
-
-	if err := first.waitForRPCRequest(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	startedAt := time.Now()
-	if err := second.waitForRPCRequest(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if elapsed := time.Since(startedAt); elapsed < interval-2*time.Millisecond {
-		t.Fatalf("request on second service waited %v, want at least %v", elapsed, interval)
-	}
-}
 
 func TestIsFilterLogsRangeLimit(t *testing.T) {
 	tests := []struct {

@@ -2,6 +2,8 @@ package chainkittransferrecords
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type ChainTransferRecords struct {
@@ -22,6 +24,12 @@ func (data *ChainTransferRecords) ID() uint64 {
 
 func (data *ChainTransferRecords) TableName() string {
 	return "chain_transfer_records"
+}
+
+func (data *ChainTransferRecords) BeforeCreate(tx *gorm.DB) (err error) {
+	data.CreatedAt = time.Now()
+	data.UpdatedAt = time.Now()
+	return nil
 }
 
 func (data *ChainTransferRecords) GetCreateDDL() string {

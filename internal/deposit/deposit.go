@@ -23,9 +23,8 @@ import (
 )
 
 var (
-	BlockNum           uint64
-	CatchUpBudget      = 20 * time.Second
-	RPCRequestInterval = time.Second
+	BlockNum      uint64
+	CatchUpBudget = 20 * time.Second
 )
 
 func Start(ctx context.Context) {
@@ -63,7 +62,6 @@ func handleChain(ctx context.Context, chain *chainkitchains.Record, wg *sync.Wai
 		return
 	}
 	defer cs.CloseClient()
-	cs.SetRPCRequestInterval(RPCRequestInterval)
 
 	wg2 := &sync.WaitGroup{}
 	depositTokens.Foreach(func(key int, depositToken *chainkitdeposittokens.Record) bool {

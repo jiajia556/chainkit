@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 type ChainCollectTasks struct {
@@ -44,6 +45,12 @@ func (data *ChainCollectTasks) ID() uint64 {
 
 func (data *ChainCollectTasks) TableName() string {
 	return "chain_collect_tasks"
+}
+
+func (data *ChainCollectTasks) BeforeCreate(tx *gorm.DB) (err error) {
+	data.CreatedAt = time.Now()
+	data.UpdatedAt = time.Now()
+	return nil
 }
 
 func (data *ChainCollectTasks) GetCreateDDL() string {

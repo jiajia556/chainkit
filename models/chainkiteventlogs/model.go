@@ -35,5 +35,6 @@ func (data *ChainEventLogs) GetCreateDDL() string {
 
 func (data *ChainEventLogs) BeforeCreate(tx *gorm.DB) (err error) {
 	data.ContractAddress = strings.ToLower(data.ContractAddress)
+	data.CreatedAt = time.Now()
 	return nil
 }
