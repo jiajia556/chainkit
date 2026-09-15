@@ -18,7 +18,9 @@ type LogContext struct {
 	Module          string
 }
 
-func (c *LogContext) SaveEventLog(eventLog types.Log) (uint64, bool, error) {
+func (c *LogContext) SaveEventLog(eventLog types.Log) (id uint64, created bool, err error) {
+	defer wrapServiceErrors("LogContext.SaveEventLog", &err)
+
 	if c == nil || c.Session == nil {
 		return 0, false, errors.New("log context session is nil")
 	}

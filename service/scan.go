@@ -67,7 +67,9 @@ type LogContextHandler func(ctx *LogContext) error
 
 // HandleLog runs one log through the same transaction boundary used by block
 // scanning. It is used by durable queues that process previously collected logs.
-func (s *ChainService) HandleLog(ctx context.Context, contractAddress, module string, handler LogHandler, eventLog types.Log) error {
+func (s *ChainService) HandleLog(ctx context.Context, contractAddress, module string, handler LogHandler, eventLog types.Log) (err error) {
+	defer wrapServiceErrors("HandleLog", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return errors.New("chain service not initialized")
 	}
@@ -114,7 +116,23 @@ func ScanBudget(budget time.Duration) ScanOption {
 	}
 }
 
-func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module string, handler LogHandler, option ...ScanOption) error {
+// HeaderByNumber performs a rate-limited header lookup. Deposit uses this for
+// confirmation processing so it shares the same per-chain limiter as getLogs.
+func (s *ChainService) HeaderByNumber(ctx context.Context, number *big.Int) (header *types.Header, err error) {
+	defer wrapServiceErrors("HeaderByNumber", &err)
+
+	if s == nil || s.rpcClient == nil {
+		return nil, errors.New("chain service not initialized")
+	}
+	if err := s.waitForRPCRequest(ctx); err != nil {
+		return nil, err
+	}
+	return s.rpcClient.HeaderByNumber(ctx, number)
+}
+
+func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module string, handler LogHandler, option ...ScanOption) (err error) {
+	defer wrapServiceErrors("ScanBlock", &err)
+
 	//log.Debug("starting scan block", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
 	if s.rpcClient == nil {
 		return errors.New("chain service not initialized")
@@ -182,7 +200,7 @@ func (s *ChainService) ScanBlock(ctx context.Context, contractAddress, module st
 func (s *ChainService) scanBlockOnce(ctx context.Context, contractAddress, module string, handler LogHandler, opts *scanOptions, step uint64) (bool, bool, error) {
 
 	//log.Debug("retrieved header", "chainDbId", s.chainDbId, "contractAddress", contractAddress, "module", module)
-	header, err := s.rpcClient.HeaderByNumber(ctx, nil)
+	header, err := s.HeaderByNumber(ctx, nil)
 	if err != nil {
 		return false, false, err
 	}
@@ -261,7 +279,9 @@ func (s *ChainService) scanBlockOnce(ctx context.Context, contractAddress, modul
 	return true, toBlock >= netSafeLastestBlock, nil
 }
 
-func (s *ChainService) ScanBlockRange(ctx context.Context, contractAddress, module string, fromBlock, toBlock uint64, handler LogHandler, afterHandlers ...LogContextHandler) error {
+func (s *ChainService) ScanBlockRange(ctx context.Context, contractAddress, module string, fromBlock, toBlock uint64, handler LogHandler, afterHandlers ...LogContextHandler) (err error) {
+	defer wrapServiceErrors("ScanBlockRange", &err)
+
 	return s.scanBlockRange(ctx, contractAddress, module, fromBlock, toBlock, nil, handler, afterHandlers...)
 }
 
@@ -310,6 +330,9 @@ func (s *ChainService) scanBlockRangeLogs(ctx context.Context, contractAddress, 
 		Addresses: []common.Address{contract},
 	}
 
+	if err := s.waitForRPCRequest(ctx); err != nil {
+		return err
+	}
 	logs, err := s.rpcClient.FilterLogs(ctx, query)
 	if err != nil {
 		return &filterLogsQueryError{fromBlock: fromBlock, toBlock: toBlock, err: err}

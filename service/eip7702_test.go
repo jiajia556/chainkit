@@ -207,6 +207,26 @@ func TestBuildSignedDynamicFeeTxRejectsAuthorization(t *testing.T) {
 	}
 }
 
+func TestSponsoredCallMsgOmitsEmptyAuthorizationList(t *testing.T) {
+	request := SetCodeTxRequest{
+		GasTipCap:      big.NewInt(1),
+		GasFeeCap:      big.NewInt(2),
+		To:             common.HexToAddress("0x1111111111111111111111111111111111111111"),
+		Authorizations: make([]types.SetCodeAuthorization, 0),
+	}
+
+	callMsg := sponsoredCallMsg(common.Address{}, request, new(big.Int))
+	if callMsg.AuthorizationList != nil {
+		t.Fatalf("empty authorization list must be omitted, got %#v", callMsg.AuthorizationList)
+	}
+
+	request.Authorizations = []types.SetCodeAuthorization{{Nonce: 1}}
+	callMsg = sponsoredCallMsg(common.Address{}, request, new(big.Int))
+	if len(callMsg.AuthorizationList) != 1 {
+		t.Fatalf("non-empty authorization list must be preserved, got %#v", callMsg.AuthorizationList)
+	}
+}
+
 func TestCalculateSetCodeFeeCap(t *testing.T) {
 	feeCap, err := CalculateSetCodeFeeCap(big.NewInt(100), big.NewInt(3))
 	if err != nil {

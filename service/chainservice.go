@@ -6,6 +6,8 @@ import (
 	"errors"
 	"math/big"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,6 +35,24 @@ type ChainService struct {
 	fromAddress       string
 	priKey            *ecdsa.PrivateKey
 	safeConfirmations uint64
+	rpcRequestLimiter *rpcRequestLimiter
+	localRPCLimiter   rpcRequestLimiter
+}
+
+type rpcRequestLimiter struct {
+	mu       sync.Mutex
+	interval time.Duration
+	last     time.Time
+}
+
+// All ChainService instances for one configured chain share a limiter. This is
+// important for processes such as deposit, which use separate clients for the
+// scanner, backfill tasks, and inbox processor.
+var chainRPCLimiters sync.Map
+
+func sharedRPCLimiter(chainDbID uint64) *rpcRequestLimiter {
+	limiter, _ := chainRPCLimiters.LoadOrStore(chainDbID, &rpcRequestLimiter{})
+	return limiter.(*rpcRequestLimiter)
 }
 
 type privateKeyAddressRecord interface {
@@ -101,9 +121,11 @@ func CheckBalance(checkBalance bool) Option {
 	}
 }
 
-func NewChainService(chainDbId uint64) (*ChainService, error) {
+func NewChainService(chainDbId uint64) (service *ChainService, err error) {
+	defer wrapServiceErrors("NewChainService", &err)
+
 	chain := chainkitchains.NewRecord()
-	err := chain.Read(chainDbId)
+	err = chain.Read(chainDbId)
 	if err != nil {
 		return nil, err
 	}
@@ -118,10 +140,13 @@ func NewChainService(chainDbId uint64) (*ChainService, error) {
 		chainId:           big.NewInt(int64(chain.Model.ChainId)),
 		chainDbId:         chain.Model.Id,
 		safeConfirmations: chain.Model.SafeConfirmations,
+		rpcRequestLimiter: sharedRPCLimiter(chain.Model.Id),
 	}, nil
 }
 
-func NewChainServiceWithRPC(rpc string) (*ChainService, error) {
+func NewChainServiceWithRPC(rpc string) (service *ChainService, err error) {
+	defer wrapServiceErrors("NewChainServiceWithRPC", &err)
+
 	client, err := ethclient.Dial(rpc)
 	if err != nil {
 		return nil, err
@@ -137,6 +162,7 @@ func NewChainServiceWithRPC(rpc string) (*ChainService, error) {
 		chainId:           chainId,
 		chainDbId:         0,
 		safeConfirmations: 0,
+		rpcRequestLimiter: &rpcRequestLimiter{},
 	}, nil
 }
 
@@ -154,9 +180,11 @@ func (s *ChainService) CloseClient() {
 	}
 }
 
-func (s *ChainService) DialClient() error {
+func (s *ChainService) DialClient() (err error) {
+	defer wrapServiceErrors("DialClient", &err)
+
 	chain := chainkitchains.NewRecord()
-	err := chain.Read(s.chainDbId)
+	err = chain.Read(s.chainDbId)
 	if err != nil {
 		return err
 	}
@@ -172,7 +200,9 @@ func (s *ChainService) DialClient() error {
 // DialWSClient connects the websocket client configured for this chain.
 // It is explicit rather than part of NewChainService so non-subscription
 // services do not depend on websocket availability.
-func (s *ChainService) DialWSClient(ctx context.Context) error {
+func (s *ChainService) DialWSClient(ctx context.Context) (err error) {
+	defer wrapServiceErrors("DialWSClient", &err)
+
 	if s == nil {
 		return errors.New("chain service is nil")
 	}
@@ -208,9 +238,11 @@ func (s *ChainService) DialWSClient(ctx context.Context) error {
 	return nil
 }
 
-func (s *ChainService) SetFromByMnemonicAddress(fromAddrId uint64, password string) error {
+func (s *ChainService) SetFromByMnemonicAddress(fromAddrId uint64, password string) (err error) {
+	defer wrapServiceErrors("SetFromByMnemonicAddress", &err)
+
 	address := chainkitmnemonicaddresses.NewRecord()
-	err := address.Read(fromAddrId)
+	err = address.Read(fromAddrId)
 	if err != nil {
 		return err
 	}
@@ -227,9 +259,11 @@ func (s *ChainService) SetFromByMnemonicAddress(fromAddrId uint64, password stri
 	return nil
 }
 
-func (s *ChainService) SetFromByDepositAddress(fromAddrId uint64, password string) error {
+func (s *ChainService) SetFromByDepositAddress(fromAddrId uint64, password string) (err error) {
+	defer wrapServiceErrors("SetFromByDepositAddress", &err)
+
 	address := chainkituserdepositaddress.NewRecord()
-	err := address.Read(fromAddrId)
+	err = address.Read(fromAddrId)
 	if err != nil {
 		return err
 	}
@@ -271,11 +305,61 @@ func (s *ChainService) GetWSClient() *ethclient.Client {
 	return s.wsClient
 }
 
-func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, error) {
+// SetRPCRequestInterval sets the minimum time between throttled RPC requests.
+// Configured ChainService instances for the same chain share this setting and
+// request schedule. A non-positive interval disables throttling.
+func (s *ChainService) SetRPCRequestInterval(interval time.Duration) {
+	if s == nil {
+		return
+	}
+	limiter := s.getRPCRequestLimiter()
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	if interval < 0 {
+		interval = 0
+	}
+	limiter.interval = interval
+	if interval == 0 {
+		limiter.last = time.Time{}
+	}
+}
+
+func (s *ChainService) getRPCRequestLimiter() *rpcRequestLimiter {
+	if s.rpcRequestLimiter != nil {
+		return s.rpcRequestLimiter
+	}
+	return &s.localRPCLimiter
+}
+
+func (s *ChainService) waitForRPCRequest(ctx context.Context) error {
+	limiter := s.getRPCRequestLimiter()
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+
+	if limiter.interval > 0 && !limiter.last.IsZero() {
+		wait := time.Until(limiter.last.Add(limiter.interval))
+		if wait > 0 {
+			timer := time.NewTimer(wait)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+
+	limiter.last = time.Now()
+	return nil
+}
+
+func (s *ChainService) GetBindTransactOpts(opts ...Option) (transactOpts *bind.TransactOpts, err error) {
+	defer wrapServiceErrors("GetBindTransactOpts", &err)
+
 	if s.priKey == nil {
 		return nil, errors.New("no private key")
 	}
-	transactOpts, err := bind.NewKeyedTransactorWithChainID(s.priKey, s.chainId)
+	transactOpts, err = bind.NewKeyedTransactorWithChainID(s.priKey, s.chainId)
 	if err != nil {
 		return nil, err
 	}
@@ -329,14 +413,18 @@ func (s *ChainService) GetBindTransactOpts(opts ...Option) (*bind.TransactOpts, 
 	return transactOpts, nil
 }
 
-func (s *ChainService) GetFromAddress() (string, error) {
+func (s *ChainService) GetFromAddress() (address string, err error) {
+	defer wrapServiceErrors("GetFromAddress", &err)
+
 	if s.fromAddressType == "" {
 		return "", errors.New("from address not set")
 	}
 	return s.fromAddress, nil
 }
 
-func (s *ChainService) GetFromId() (types.ServiceAddressType, uint64, error) {
+func (s *ChainService) GetFromId() (addressType types.ServiceAddressType, addressID uint64, err error) {
+	defer wrapServiceErrors("GetFromId", &err)
+
 	if s.fromAddressType == "" {
 		return "", 0, errors.New("from address not set")
 	}
@@ -347,7 +435,9 @@ func (s *ChainService) GetChainDbId() uint64 {
 	return s.chainDbId
 }
 
-func (s *ChainService) GetFromETHBalance() (decimal.Decimal, error) {
+func (s *ChainService) GetFromETHBalance() (balanceDecimal decimal.Decimal, err error) {
+	defer wrapServiceErrors("GetFromETHBalance", &err)
+
 	if s.fromAddressType == "" {
 		return decimal.Zero, errors.New("from address not set")
 	}

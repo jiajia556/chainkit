@@ -64,7 +64,9 @@ func (s *ChainService) DelegationAt(
 	ctx context.Context,
 	authority string,
 	expectedDelegate string,
-) (DelegationInfo, error) {
+) (info DelegationInfo, err error) {
+	defer wrapServiceErrors("DelegationAt", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return DelegationInfo{}, errors.New("chain service not initialized")
 	}
@@ -85,7 +87,9 @@ func (s *ChainService) DelegationAt(
 // StableAuthorizationNonce returns the latest state nonce only when there is no
 // pending nonce gap. Signing while the authority has pending transactions makes
 // inclusion order ambiguous and can invalidate the EIP-7702 authorization.
-func (s *ChainService) StableAuthorizationNonce(ctx context.Context, authority string) (uint64, error) {
+func (s *ChainService) StableAuthorizationNonce(ctx context.Context, authority string) (nonce uint64, err error) {
+	defer wrapServiceErrors("StableAuthorizationNonce", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return 0, errors.New("chain service not initialized")
 	}
@@ -117,7 +121,9 @@ func (s *ChainService) StableAuthorizationNonce(ctx context.Context, authority s
 func (s *ChainService) SignSetCodeAuthorization(
 	delegate string,
 	nonce uint64,
-) (types.SetCodeAuthorization, error) {
+) (result types.SetCodeAuthorization, err error) {
+	defer wrapServiceErrors("SignSetCodeAuthorization", &err)
+
 	if s == nil || s.priKey == nil || s.chainId == nil {
 		return types.SetCodeAuthorization{}, errors.New("chain service signer not initialized")
 	}
@@ -149,7 +155,9 @@ func (s *ChainService) SignSetCodeAuthorization(
 }
 
 // PackCollectCalldata ABI-encodes BatchSweepExecutor.collect(items).
-func PackCollectCalldata(items []batchsweepexecutor.BatchSweepExecutorCollectItem) ([]byte, error) {
+func PackCollectCalldata(items []batchsweepexecutor.BatchSweepExecutorCollectItem) (calldata []byte, err error) {
+	defer wrapServiceErrors("PackCollectCalldata", &err)
+
 	if len(items) == 0 {
 		return nil, errors.New("collect items are empty")
 	}
@@ -168,6 +176,8 @@ func PackCollectCalldata(items []batchsweepexecutor.BatchSweepExecutorCollectIte
 // The fee cap allows the next block's base fee to rise up to roughly 2x while
 // preserving the suggested priority fee.
 func (s *ChainService) SuggestSetCodeFees(ctx context.Context) (gasTipCap, gasFeeCap *big.Int, err error) {
+	defer wrapServiceErrors("SuggestSetCodeFees", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return nil, nil, errors.New("chain service not initialized")
 	}
@@ -190,7 +200,9 @@ func (s *ChainService) SuggestSetCodeFees(ctx context.Context) (gasTipCap, gasFe
 	return gasTipCap, gasFeeCap, nil
 }
 
-func CalculateSetCodeFeeCap(baseFee, gasTipCap *big.Int) (*big.Int, error) {
+func CalculateSetCodeFeeCap(baseFee, gasTipCap *big.Int) (result *big.Int, err error) {
+	defer wrapServiceErrors("CalculateSetCodeFeeCap", &err)
+
 	if baseFee == nil || gasTipCap == nil {
 		return nil, errors.New("base fee and gas tip cap are required")
 	}
@@ -210,7 +222,9 @@ func CalculateSetCodeFeeCap(baseFee, gasTipCap *big.Int) (*big.Int, error) {
 func (s *ChainService) EstimateSetCodeGas(
 	ctx context.Context,
 	request SetCodeTxRequest,
-) (uint64, error) {
+) (gasLimit uint64, err error) {
+	defer wrapServiceErrors("EstimateSetCodeGas", &err)
+
 	if len(request.Authorizations) == 0 {
 		return 0, errors.New("set-code transaction authorization list is empty")
 	}
@@ -222,7 +236,9 @@ func (s *ChainService) EstimateSetCodeGas(
 func (s *ChainService) EstimateDynamicFeeGas(
 	ctx context.Context,
 	request SetCodeTxRequest,
-) (uint64, error) {
+) (gasLimit uint64, err error) {
+	defer wrapServiceErrors("EstimateDynamicFeeGas", &err)
+
 	if len(request.Authorizations) != 0 {
 		return 0, errors.New("dynamic-fee transaction cannot contain authorizations")
 	}
@@ -251,16 +267,8 @@ func (s *ChainService) estimateSponsoredGas(
 	}
 
 	from := crypto.PubkeyToAddress(s.priKey.PublicKey)
-	estimated, err := s.rpcClient.EstimateGas(ctx, ethereum.CallMsg{
-		From:              from,
-		To:                &request.To,
-		GasFeeCap:         request.GasFeeCap,
-		GasTipCap:         request.GasTipCap,
-		Value:             value,
-		Data:              request.Data,
-		AccessList:        request.AccessList,
-		AuthorizationList: request.Authorizations,
-	})
+	callMsg := sponsoredCallMsg(from, request, value)
+	estimated, err := s.rpcClient.EstimateGas(ctx, callMsg)
 	if err != nil {
 		return 0, fmt.Errorf("estimate sponsored transaction gas: %w", err)
 	}
@@ -271,9 +279,31 @@ func (s *ChainService) estimateSponsoredGas(
 	return gasLimit, nil
 }
 
+func sponsoredCallMsg(from common.Address, request SetCodeTxRequest, value *big.Int) ethereum.CallMsg {
+	callMsg := ethereum.CallMsg{
+		From:       from,
+		To:         &request.To,
+		GasFeeCap:  request.GasFeeCap,
+		GasTipCap:  request.GasTipCap,
+		Value:      value,
+		Data:       request.Data,
+		AccessList: request.AccessList,
+	}
+	// A non-nil empty authorization list is serialized as
+	// "authorizationList": []. RPC nodes then classify the call as EIP-7702
+	// and reject it because type-4 transactions require at least one
+	// authorization. Leave the field nil for recurring type-2 collections.
+	if len(request.Authorizations) > 0 {
+		callMsg.AuthorizationList = request.Authorizations
+	}
+	return callMsg
+}
+
 // BuildSignedDynamicFeeTx builds a type-2 sponsored call for authorities that
 // are already delegated. It deliberately rejects authorization entries.
-func (s *ChainService) BuildSignedDynamicFeeTx(request SetCodeTxRequest) (*types.Transaction, error) {
+func (s *ChainService) BuildSignedDynamicFeeTx(request SetCodeTxRequest) (tx *types.Transaction, err error) {
+	defer wrapServiceErrors("BuildSignedDynamicFeeTx", &err)
+
 	if s == nil || s.priKey == nil || s.chainId == nil {
 		return nil, errors.New("chain service sponsor signer not initialized")
 	}
@@ -316,7 +346,9 @@ func (s *ChainService) BuildSignedDynamicFeeTx(request SetCodeTxRequest) (*types
 }
 
 // AddGasMargin applies a basis-point margin and rounds up.
-func AddGasMargin(estimated uint64, marginBPS uint64) (uint64, error) {
+func AddGasMargin(estimated uint64, marginBPS uint64) (gasLimit uint64, err error) {
+	defer wrapServiceErrors("AddGasMargin", &err)
+
 	if estimated == 0 {
 		return 0, errors.New("estimated gas is zero")
 	}
@@ -335,7 +367,9 @@ func AddGasMargin(estimated uint64, marginBPS uint64) (uint64, error) {
 
 // BuildSignedSetCodeTx builds and signs the type-4 outer transaction with the
 // address currently selected on ChainService acting as the gas sponsor.
-func (s *ChainService) BuildSignedSetCodeTx(request SetCodeTxRequest) (*types.Transaction, error) {
+func (s *ChainService) BuildSignedSetCodeTx(request SetCodeTxRequest) (tx *types.Transaction, err error) {
+	defer wrapServiceErrors("BuildSignedSetCodeTx", &err)
+
 	if s == nil || s.priKey == nil || s.chainId == nil {
 		return nil, errors.New("chain service sponsor signer not initialized")
 	}
@@ -414,6 +448,8 @@ func (s *ChainService) SendSetCodeTx(
 	ctx context.Context,
 	request SetCodeTxRequest,
 ) (hash string, fakeErr, err error) {
+	defer wrapServiceErrors("SendSetCodeTx", &fakeErr, &err)
+
 	if s == nil || s.rpcClient == nil {
 		return "", nil, errors.New("chain service not initialized")
 	}
@@ -430,6 +466,8 @@ func (s *ChainService) SendSignedTransaction(
 	ctx context.Context,
 	signedTx *types.Transaction,
 ) (hash string, fakeErr, err error) {
+	defer wrapServiceErrors("SendSignedTransaction", &fakeErr, &err)
+
 	if s == nil || s.rpcClient == nil {
 		return "", nil, errors.New("chain service not initialized")
 	}

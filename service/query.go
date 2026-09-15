@@ -23,7 +23,9 @@ const (
 	TxStatusUnknown   TxStatus = "unknown"
 )
 
-func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
+func (s *ChainService) GetTxStatus(txHash string) (status TxStatus, err error) {
+	defer wrapServiceErrors("GetTxStatus", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return "", errors.New("chain service not initialized")
 	}
@@ -95,7 +97,9 @@ func (s *ChainService) GetTxStatus(txHash string) (TxStatus, error) {
 	return TxStatusMined, nil
 }
 
-func (s *ChainService) BalanceAt(address string) (decimal.Decimal, error) {
+func (s *ChainService) BalanceAt(address string) (balanceDecimal decimal.Decimal, err error) {
+	defer wrapServiceErrors("BalanceAt", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return decimal.Zero, errors.New("chain service not initialized")
 	}
@@ -109,7 +113,9 @@ func (s *ChainService) BalanceAt(address string) (decimal.Decimal, error) {
 	return decimal.NewFromBigInt(balance, 0), nil
 }
 
-func (s *ChainService) BalanceOf(tokenAddress string, address string) (decimal.Decimal, error) {
+func (s *ChainService) BalanceOf(tokenAddress string, address string) (balanceDecimal decimal.Decimal, err error) {
+	defer wrapServiceErrors("BalanceOf", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return decimal.Zero, errors.New("chain service not initialized")
 	}
@@ -130,7 +136,9 @@ func (s *ChainService) BalanceOf(tokenAddress string, address string) (decimal.D
 	return decimal.NewFromBigInt(balance, 0), nil
 }
 
-func (s *ChainService) IsContract(address string) (bool, error) {
+func (s *ChainService) IsContract(address string) (isContract bool, err error) {
+	defer wrapServiceErrors("IsContract", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return false, errors.New("chain service not initialized")
 	}
@@ -144,7 +152,9 @@ func (s *ChainService) IsContract(address string) (bool, error) {
 	return len(code) > 0, nil
 }
 
-func (s *ChainService) SuggestGasPrice() (decimal.Decimal, error) {
+func (s *ChainService) SuggestGasPrice() (priceDecimal decimal.Decimal, err error) {
+	defer wrapServiceErrors("SuggestGasPrice", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return decimal.Zero, errors.New("chain service not initialized")
 	}
@@ -155,7 +165,9 @@ func (s *ChainService) SuggestGasPrice() (decimal.Decimal, error) {
 	return decimal.NewFromBigInt(price, 0), nil
 }
 
-func (s *ChainService) IsNonceOccupied(address string, nonce uint64) (bool, error) {
+func (s *ChainService) IsNonceOccupied(address string, nonce uint64) (occupied bool, err error) {
+	defer wrapServiceErrors("IsNonceOccupied", &err)
+
 	if s == nil || s.rpcClient == nil {
 		return false, errors.New("chain service not initialized")
 	}
@@ -173,7 +185,9 @@ func (s *ChainService) IsNonceOccupied(address string, nonce uint64) (bool, erro
 	return nonce < pendingNonce, nil
 }
 
-func (s *ChainService) GetGasUsedAndEffectiveGasPrice(hash string) (decimal.Decimal, decimal.Decimal, error) {
+func (s *ChainService) GetGasUsedAndEffectiveGasPrice(hash string) (gasUsedDecimal, effectiveGasPriceDecimal decimal.Decimal, err error) {
+	defer wrapServiceErrors("GetGasUsedAndEffectiveGasPrice", &err)
+
 	receipt, err := s.rpcClient.TransactionReceipt(context.Background(), common.HexToHash(hash))
 	if err != nil {
 		return decimal.Zero, decimal.Zero, err

@@ -10,6 +10,8 @@ import (
 )
 
 func (s *ChainService) ApproveERC20(tokenAddress, spenderAddress string, amount decimal.Decimal, opts ...Option) (hash string, fakeErr, err error) {
+	defer wrapServiceErrors("ApproveERC20", &fakeErr, &err)
+
 	if s == nil || s.rpcClient == nil {
 		return "", nil, errors.New("chain service not initialized")
 	}

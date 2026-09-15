@@ -59,6 +59,8 @@ func uncertainBroadcastError(hash string, err error) error {
 }
 
 func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
+	defer wrapServiceErrors("TransferETH", &fakeErr, &err)
+
 	if s == nil || s.rpcClient == nil {
 		return "", 0, nil, errors.New("transfer service not initialized")
 	}
@@ -163,6 +165,8 @@ func (s *ChainService) TransferETH(to string, value decimal.Decimal, opts ...Opt
 }
 
 func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
+	defer wrapServiceErrors("TransferERC20", &fakeErr, &err)
+
 	if s == nil || s.rpcClient == nil {
 		return "", 0, nil, errors.New("transfer service not initialized")
 	}
@@ -240,6 +244,8 @@ func (s *ChainService) TransferERC20(token, to string, amount decimal.Decimal, o
 }
 
 func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
+	defer wrapServiceErrors("MultiTransfer", &fakeErr, &err)
+
 	if s == nil || s.rpcClient == nil {
 		return "", 0, nil, errors.New("transfer service not initialized")
 	}
@@ -386,14 +392,16 @@ func (s *ChainService) MultiTransfer(tokensStr, tosStr []string, valuesDec []dec
 	return
 }
 
-func (s *ChainService) DBTransfer(count int, opts ...Option) error {
+func (s *ChainService) DBTransfer(count int, opts ...Option) (err error) {
+	defer wrapServiceErrors("DBTransfer", &err)
+
 	if s == nil || s.rpcClient == nil || s.priKey == nil {
 		return errors.New("service not initialized")
 	}
 
 	retryPending := false
 	pending := chainkittransferrecords.NewRecord()
-	err := pending.ReadPending(s.chainDbId, s.fromAddressType, s.fromAddressId)
+	err = pending.ReadPending(s.chainDbId, s.fromAddressType, s.fromAddressId)
 	if err == nil && pending.Exists() {
 		status, err := s.GetTxStatus(pending.Model.Hash)
 		if err != nil {

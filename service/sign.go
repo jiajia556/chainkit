@@ -15,14 +15,17 @@ const recoverableSignatureLength = 65
 // SignString signs the Keccak-256 hash of data with the private key configured
 // on the service. The returned signature is encoded as [R || S || V], where V
 // is 0 or 1.
-func (s *ChainService) SignString(data string) ([]byte, error) {
+func (s *ChainService) SignString(data string) (signature []byte, err error) {
+	defer wrapServiceErrors("SignString", &err)
 	return s.SignBytes([]byte(data))
 }
 
 // SignBytes signs the Keccak-256 hash of data with the private key configured
 // on the service. The returned signature is encoded as [R || S || V], where V
 // is 0 or 1.
-func (s *ChainService) SignBytes(data []byte) ([]byte, error) {
+func (s *ChainService) SignBytes(data []byte) (signature []byte, err error) {
+	defer wrapServiceErrors("SignBytes", &err)
+
 	if s == nil || s.priKey == nil {
 		return nil, errors.New("no private key")
 	}
@@ -31,7 +34,9 @@ func (s *ChainService) SignBytes(data []byte) ([]byte, error) {
 }
 
 // SignStringHex is the hex-string form of SignString.
-func (s *ChainService) SignStringHex(data string) (string, error) {
+func (s *ChainService) SignStringHex(data string) (encoded string, err error) {
+	defer wrapServiceErrors("SignStringHex", &err)
+
 	signature, err := s.SignString(data)
 	if err != nil {
 		return "", err
@@ -40,7 +45,9 @@ func (s *ChainService) SignStringHex(data string) (string, error) {
 }
 
 // SignBytesHex is the hex-string form of SignBytes.
-func (s *ChainService) SignBytesHex(data []byte) (string, error) {
+func (s *ChainService) SignBytesHex(data []byte) (encoded string, err error) {
+	defer wrapServiceErrors("SignBytesHex", &err)
+
 	signature, err := s.SignBytes(data)
 	if err != nil {
 		return "", err
@@ -49,13 +56,16 @@ func (s *ChainService) SignBytesHex(data []byte) (string, error) {
 }
 
 // SignPersonalString signs data using the EIP-191 personal-sign convention.
-func (s *ChainService) SignPersonalString(data string) ([]byte, error) {
+func (s *ChainService) SignPersonalString(data string) (signature []byte, err error) {
+	defer wrapServiceErrors("SignPersonalString", &err)
 	return s.SignPersonalBytes([]byte(data))
 }
 
 // SignPersonalBytes signs data using the EIP-191 personal-sign convention.
 // The signed hash is Keccak-256("\x19Ethereum Signed Message:\n" + len(data) + data).
-func (s *ChainService) SignPersonalBytes(data []byte) ([]byte, error) {
+func (s *ChainService) SignPersonalBytes(data []byte) (signature []byte, err error) {
+	defer wrapServiceErrors("SignPersonalBytes", &err)
+
 	if s == nil || s.priKey == nil {
 		return nil, errors.New("no private key")
 	}
@@ -64,7 +74,9 @@ func (s *ChainService) SignPersonalBytes(data []byte) ([]byte, error) {
 }
 
 // SignPersonalStringHex is the hex-string form of SignPersonalString.
-func (s *ChainService) SignPersonalStringHex(data string) (string, error) {
+func (s *ChainService) SignPersonalStringHex(data string) (encoded string, err error) {
+	defer wrapServiceErrors("SignPersonalStringHex", &err)
+
 	signature, err := s.SignPersonalString(data)
 	if err != nil {
 		return "", err
@@ -73,7 +85,9 @@ func (s *ChainService) SignPersonalStringHex(data string) (string, error) {
 }
 
 // SignPersonalBytesHex is the hex-string form of SignPersonalBytes.
-func (s *ChainService) SignPersonalBytesHex(data []byte) (string, error) {
+func (s *ChainService) SignPersonalBytesHex(data []byte) (encoded string, err error) {
+	defer wrapServiceErrors("SignPersonalBytesHex", &err)
+
 	signature, err := s.SignPersonalBytes(data)
 	if err != nil {
 		return "", err
@@ -82,23 +96,28 @@ func (s *ChainService) SignPersonalBytesHex(data []byte) (string, error) {
 }
 
 // VerifyString verifies that signature was produced for data by signerAddress.
-func (s *ChainService) VerifyString(data string, signature []byte, signerAddress string) (bool, error) {
+func (s *ChainService) VerifyString(data string, signature []byte, signerAddress string) (valid bool, err error) {
+	defer wrapServiceErrors("VerifyString", &err)
 	return s.VerifyBytes([]byte(data), signature, signerAddress)
 }
 
 // VerifyBytes verifies that signature was produced for data by signerAddress.
 // signature must use the [R || S || V] encoding returned by SignBytes.
-func (s *ChainService) VerifyBytes(data, signature []byte, signerAddress string) (bool, error) {
+func (s *ChainService) VerifyBytes(data, signature []byte, signerAddress string) (valid bool, err error) {
+	defer wrapServiceErrors("VerifyBytes", &err)
 	return verifyHash(crypto.Keccak256(data), signature, signerAddress)
 }
 
 // VerifyStringHex verifies a 0x-prefixed hex signature for string data.
-func (s *ChainService) VerifyStringHex(data, signatureHex, signerAddress string) (bool, error) {
+func (s *ChainService) VerifyStringHex(data, signatureHex, signerAddress string) (valid bool, err error) {
+	defer wrapServiceErrors("VerifyStringHex", &err)
 	return s.VerifyBytesHex([]byte(data), signatureHex, signerAddress)
 }
 
 // VerifyBytesHex verifies a 0x-prefixed hex signature for byte data.
-func (s *ChainService) VerifyBytesHex(data []byte, signatureHex, signerAddress string) (bool, error) {
+func (s *ChainService) VerifyBytesHex(data []byte, signatureHex, signerAddress string) (valid bool, err error) {
+	defer wrapServiceErrors("VerifyBytesHex", &err)
+
 	signature, err := decodeSignatureHex(signatureHex)
 	if err != nil {
 		return false, err
@@ -108,23 +127,28 @@ func (s *ChainService) VerifyBytesHex(data []byte, signatureHex, signerAddress s
 
 // VerifyPersonalString verifies an EIP-191 personal-sign signature for data
 // against signerAddress.
-func (s *ChainService) VerifyPersonalString(data string, signature []byte, signerAddress string) (bool, error) {
+func (s *ChainService) VerifyPersonalString(data string, signature []byte, signerAddress string) (valid bool, err error) {
+	defer wrapServiceErrors("VerifyPersonalString", &err)
 	return s.VerifyPersonalBytes([]byte(data), signature, signerAddress)
 }
 
 // VerifyPersonalBytes verifies an EIP-191 personal-sign signature for data
 // against signerAddress.
-func (s *ChainService) VerifyPersonalBytes(data, signature []byte, signerAddress string) (bool, error) {
+func (s *ChainService) VerifyPersonalBytes(data, signature []byte, signerAddress string) (valid bool, err error) {
+	defer wrapServiceErrors("VerifyPersonalBytes", &err)
 	return verifyHash(accounts.TextHash(data), signature, signerAddress)
 }
 
 // VerifyPersonalStringHex verifies a 0x-prefixed EIP-191 signature for string data.
-func (s *ChainService) VerifyPersonalStringHex(data, signatureHex, signerAddress string) (bool, error) {
+func (s *ChainService) VerifyPersonalStringHex(data, signatureHex, signerAddress string) (valid bool, err error) {
+	defer wrapServiceErrors("VerifyPersonalStringHex", &err)
 	return s.VerifyPersonalBytesHex([]byte(data), signatureHex, signerAddress)
 }
 
 // VerifyPersonalBytesHex verifies a 0x-prefixed EIP-191 signature for byte data.
-func (s *ChainService) VerifyPersonalBytesHex(data []byte, signatureHex, signerAddress string) (bool, error) {
+func (s *ChainService) VerifyPersonalBytesHex(data []byte, signatureHex, signerAddress string) (valid bool, err error) {
+	defer wrapServiceErrors("VerifyPersonalBytesHex", &err)
+
 	signature, err := decodeSignatureHex(signatureHex)
 	if err != nil {
 		return false, err

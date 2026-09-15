@@ -17,6 +17,8 @@ import (
 )
 
 func (s *ChainService) MintERC20(token, to string, amount decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
+	defer wrapServiceErrors("MintERC20", &fakeErr, &err)
+
 	if s == nil || s.rpcClient == nil {
 		return "", 0, nil, errors.New("transfer service not initialized")
 	}
@@ -81,6 +83,8 @@ func (s *ChainService) MintERC20(token, to string, amount decimal.Decimal, opts 
 }
 
 func (s *ChainService) BatchMintERC20(token string, tosStr []string, valuesDec []decimal.Decimal, opts ...Option) (hash string, nonce uint64, fakeErr, err error) {
+	defer wrapServiceErrors("BatchMintERC20", &fakeErr, &err)
+
 	if s == nil || s.rpcClient == nil {
 		return "", 0, nil, errors.New("transfer service not initialized")
 	}
@@ -191,14 +195,16 @@ func (s *ChainService) BatchMintERC20(token string, tosStr []string, valuesDec [
 	return
 }
 
-func (s *ChainService) DBMint(count int, tokenId uint64, opts ...Option) error {
+func (s *ChainService) DBMint(count int, tokenId uint64, opts ...Option) (err error) {
+	defer wrapServiceErrors("DBMint", &err)
+
 	if s == nil || s.rpcClient == nil || s.priKey == nil {
 		return errors.New("service not initialized")
 	}
 
 	retryPending := false
 	pending := chainkitmintrecords.NewRecord()
-	err := pending.ReadPending(s.chainDbId, s.fromAddressType, s.fromAddressId)
+	err = pending.ReadPending(s.chainDbId, s.fromAddressType, s.fromAddressId)
 	if err == nil && pending.Exists() {
 		status, err := s.GetTxStatus(pending.Model.Hash)
 		if err != nil {
